@@ -1,4 +1,6 @@
 import 'package:itaaleem/core/content/content_policy.dart';
+import 'package:itaaleem/features/app_config/app_config_providers.dart'
+    show serverText;
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
@@ -404,7 +406,11 @@ class _LecturePlayerScreenState extends ConsumerState<LecturePlayerScreen>
                         _isNotSubscribedError(error) && widget.courseId != null
                         ? ErrorView(
                             message: PlatformUtils.hideSubscriptions
-                                ? lockedContentMessage
+                                ? serverText(
+                                    context,
+                                    'locked_content',
+                                    lockedContentMessage,
+                                  )
                                 : 'المحاضرة دي محتاجة اشتراك',
                             retryLabel: PlatformUtils.hideSubscriptions
                                 ? 'تواصل مع المركز'

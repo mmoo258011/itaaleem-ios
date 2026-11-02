@@ -169,6 +169,9 @@ class _AuthShellState extends State<AuthShell>
         body: AppBackground(
           child: LayoutBuilder(
             builder: (context, constraints) => SingleChildScrollView(
+              // Clamping: the stretch overscroll throws "Build scheduled during frame"
+              // when the keyboard resizes the viewport mid-drag.
+              physics: const ClampingScrollPhysics(),
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               padding: EdgeInsetsDirectional.fromSTEB(
                 20,

@@ -1,4 +1,6 @@
 import 'package:itaaleem/features/subjects/presentation/widgets/locked_lecture_access.dart';
+import 'package:itaaleem/features/app_config/app_config_providers.dart'
+    show serverText;
 import 'package:itaaleem/core/content/content_policy.dart';
 import 'package:itaaleem/features/home/presentation/providers/content_refresh.dart';
 import 'package:itaaleem/app/router/app_router.dart';
@@ -412,7 +414,11 @@ class _VideoHeroCard extends StatelessWidget {
                           Text(
                             locked
                                 ? PlatformUtils.hideSubscriptions
-                                      ? lockedContentMessage
+                                      ? serverText(
+                                          context,
+                                          'locked_content',
+                                          lockedContentMessage,
+                                        )
                                       : 'محتوى مقفول — فعّله بالكود أو اطلب اشتراك'
                                 : hasVideo
                                 ? 'مشاهدة الفيديو'

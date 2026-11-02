@@ -135,8 +135,11 @@ class _YoutubeWebviewPlayerState extends State<YoutubeWebviewPlayer> {
     widget.onFailed?.call();
   }
 
+  static bool _under(String host, String domain) =>
+      host == domain || host.endsWith('.$domain');
+
   static bool _isAllowedHost(String host) {
-    bool under(String domain) => host == domain || host.endsWith('.$domain');
+    bool under(String domain) => _under(host, domain);
     return under('youtube.com') ||
         under('youtube-nocookie.com') ||
         under('googlevideo.com') ||
@@ -153,14 +156,16 @@ class _YoutubeWebviewPlayerState extends State<YoutubeWebviewPlayer> {
     final uri = Uri.tryParse(request.url);
     final host = uri?.host.toLowerCase() ?? '';
     final path = uri?.path ?? '';
+    // Exact host or a real subdomain — `endsWith('youtube.com')` alone would
+    // also let `evilyoutube.com` load as the top-level page.
     final isYoutube =
-        host.endsWith('youtube.com') || host.endsWith('youtube-nocookie.com');
+        _under(host, 'youtube.com') || _under(host, 'youtube-nocookie.com');
     final allowed = request.isMainFrame
         ? (isYoutube &&
                   (path.startsWith('/embed/') ||
                       path.isEmpty ||
                       path == '/')) ||
-              host.endsWith('google.com') ||
+              _under(host, 'google.com') ||
               request.url.startsWith('about:')
         : _isAllowedHost(host) || request.url.startsWith('about:');
     if (!allowed && kDebugMode) {

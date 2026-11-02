@@ -29,8 +29,8 @@ class UpdateAvailableBanner extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final status = ref.watch(updateStatusProvider).valueOrNull;
-    final dismissed = ref.watch(updateBannerDismissedProvider);
-    if (status == null || status.forceUpdate || dismissed) {
+    final dismissed = ref.watch(dismissedUpdateProvider);
+    if (status == null || status.forceUpdate || dismissed == status.key) {
       return const SizedBox.shrink();
     }
 
@@ -92,8 +92,9 @@ class UpdateAvailableBanner extends ConsumerWidget {
               child: const Text('تحديث'),
             ),
             IconButton(
-              onPressed: () =>
-                  ref.read(updateBannerDismissedProvider.notifier).state = true,
+              onPressed: () => ref
+                  .read(dismissedUpdateProvider.notifier)
+                  .dismiss(status.key),
               icon: Icon(
                 Icons.close_rounded,
                 color: context.palette.onPrimary.withValues(alpha: 0.7),

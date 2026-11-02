@@ -1,4 +1,6 @@
 import 'package:itaaleem/app/router/app_router.dart';
+import 'package:itaaleem/features/app_config/app_config_providers.dart'
+    show serverText;
 import 'package:itaaleem/core/localization/generated/app_localizations.dart';
 import 'package:itaaleem/core/utils/platform_utils.dart';
 import 'package:itaaleem/core/error/failure.dart';
@@ -7,6 +9,8 @@ import 'package:itaaleem/core/widgets/app_toast.dart';
 import 'package:itaaleem/core/widgets/auth_shell.dart';
 import 'package:itaaleem/features/auth/presentation/providers/auth_controller.dart';
 import 'package:itaaleem/features/auth/presentation/widgets/device_lock_dialog.dart';
+import 'package:itaaleem/features/parent/presentation/screens/parent_home_screen.dart';
+import 'package:itaaleem/features/settings/presentation/providers/settings_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -64,12 +68,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final parentAccessEnabled =
+        ref.watch(appSettingsProvider).valueOrNull?.parentAccessEnabled ??
+        false;
 
     return Form(
       key: _formKey,
       child: AuthShell(
         title: 'منصة أونلاين',
-        subtitle: 'مرحبًا بك في رحلتك التعليمية',
+        subtitle: serverText(
+          context,
+          'welcome',
+          'مرحبًا بك في رحلتك التعليمية',
+        ),
         headerFactor: 0.35,
         badgeSize: 90,
         fields: [
@@ -159,10 +170,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           onPressed: _submitting ? null : _submit,
           loading: _submitting,
         ),
-        footer: AuthFooterLink(
-          prompt: 'مفيش حساب؟',
-          action: 'سجل حساب جديد',
-          onTap: () => context.go(registerPath),
+        footer: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AuthFooterLink(
+              prompt: 'مفيش حساب؟',
+              action: 'سجل حساب جديد',
+              onTap: () => context.go(registerPath),
+            ),
+            if (parentAccessEnabled)
+              TextButton.icon(
+                onPressed: () => context.push(parentAuthPath),
+                icon: const Icon(Icons.family_restroom_rounded, size: 18),
+                label: const Text('دخول ولي أمر'),
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.primary,
+                  textStyle: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                ),
+              ),
+          ],
         ),
       ),
     );

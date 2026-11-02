@@ -24,11 +24,29 @@ class ErrorMessages {
     return _fields[key] ?? 'هذا الحقل';
   }
 
+  /// Sign-up with a number that already has an account.
+  static const mobileTaken =
+      'رقم الهاتف ده متسجّل قبل كده. سجّل دخول بيه، أو استخدم «نسيت كلمة المرور».';
+
+  /// The server's "mobile already registered" in either language — e.g.
+  /// `رقم التليفون مسجل من قبل` or `The mobile has already been taken.`
+  static bool _isMobileTaken(String m) {
+    final lower = m.toLowerCase();
+    final aboutMobile = RegExp(
+      r'mobile|phone|رقم|تليفون|هاتف|موبايل',
+    ).hasMatch(lower);
+    final taken = RegExp(
+      r'already been taken|already (registered|exists)|مسجل من قبل|مسجّل من قبل|مستخدم من قبل|مسجل بالفعل',
+    ).hasMatch(lower);
+    return aboutMobile && taken;
+  }
+
   /// Returns [message] unchanged if it's already Arabic, otherwise the
   /// best-known Arabic equivalent (or [fallback]).
   static String translate(String message, {String fallback = generic}) {
     final m = message.trim();
     if (m.isEmpty) return fallback;
+    if (_isMobileTaken(m)) return mobileTaken;
     if (_arabic.hasMatch(m)) return m;
     final lower = m.toLowerCase();
 
@@ -41,12 +59,7 @@ class ErrorMessages {
     final taken = RegExp(
       r'^the (.+?) has already been taken',
     ).firstMatch(lower);
-    if (taken != null) {
-      final f = taken.group(1)!;
-      return f == 'mobile' || f == 'phone'
-          ? 'الرقم مسجل من قبل. تواصل مع الإدارة'
-          : '${_field(f)} مستخدم من قبل';
-    }
+    if (taken != null) return '${_field(taken.group(1)!)} مستخدم من قبل';
     final required = RegExp(r'^the (.+?) field is required').firstMatch(lower);
     if (required != null) {
       final f = required.group(1)!;

@@ -12,18 +12,24 @@ import 'package:itaaleem/features/subjects/presentation/providers/subjects_provi
 /// state may have changed (subjects, lectures, exams, files, watermark) and
 /// the student's profile, so newly unlocked content shows up right away.
 void invalidateAfterActivation(WidgetRef ref) {
-  ref.invalidate(coursesProvider);
-  ref.invalidate(availableCoursesProvider);
-  ref.invalidate(homeSubjectsProvider);
-  ref.invalidate(subjectsListProvider);
-  ref.invalidate(subjectDetailsProvider);
-  ref.invalidate(homeLessonsProvider);
-  ref.invalidate(attachmentsProvider);
-  ref.invalidate(lessonAttachmentsProvider);
-  ref.invalidate(examsListProvider);
-  ref.invalidate(subjectExamsProvider);
-  ref.invalidate(lectureExamsProvider);
-  ref.invalidate(examDetailsProvider);
-  ref.invalidate(lessonWatermarkProvider);
+  invalidateContent(ref.invalidate);
   unawaited(ref.read(authControllerProvider.notifier).refreshProfile());
+}
+
+/// Every provider holding course content (subjects, lectures, exams, files,
+/// watermark) — after an activation or a move to another grade.
+void invalidateContent(void Function(ProviderOrFamily) invalidate) {
+  invalidate(coursesProvider);
+  invalidate(availableCoursesProvider);
+  invalidate(homeSubjectsProvider);
+  invalidate(subjectsListProvider);
+  invalidate(subjectDetailsProvider);
+  invalidate(homeLessonsProvider);
+  invalidate(attachmentsProvider);
+  invalidate(lessonAttachmentsProvider);
+  invalidate(examsListProvider);
+  invalidate(subjectExamsProvider);
+  invalidate(lectureExamsProvider);
+  invalidate(examDetailsProvider);
+  invalidate(lessonWatermarkProvider);
 }

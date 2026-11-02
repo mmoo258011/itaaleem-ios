@@ -51,7 +51,10 @@ class SubjectsScreen extends ConsumerWidget {
       body: isDemo
           ? const _DemoSubjectsList()
           : RefreshIndicator(
-              onRefresh: () => refreshAll(ref),
+              onRefresh: () {
+                ref.invalidate(subjectsByTermProvider);
+                return refreshAll(ref);
+              },
               child: const _RealSubjectsList(),
             ),
     );
@@ -84,6 +87,17 @@ class _RealSubjectsList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Terms on (and served): grouped view. Otherwise — switch off, 403 or
+    // any error — the plain list below, exactly as before.
+    final byTerm = ref.watch(subjectsByTermProvider);
+    if (byTerm.isLoading && !byTerm.hasValue) {
+      return const ShimmerList(count: 5, thumbnailSize: 60);
+    }
+    final terms = byTerm.valueOrNull;
+    if (terms != null) {
+      return _TermSubjectsList(terms: visibleTermGroups(terms));
+    }
+
     final subjectsAsync = ref.watch(subjectsListProvider);
     ref.watch(prefetchFirstSubjectProvider);
 
@@ -146,6 +160,123 @@ class _RealSubjectsList extends ConsumerWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// `GET /subjects-by-term`: one section per term in the server's order
+/// (never re-sorted), "الترم الحالي" on `is_current`, each subject on the
+/// same card (and lock gate) as the plain list.
+class _TermSubjectsList extends ConsumerWidget {
+  const _TermSubjectsList({required this.terms});
+
+  final List<TermGroup> terms;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final count = terms.fold<int>(0, (n, t) => n + t.subjects.length);
+    if (count == 0) {
+      final noCourse =
+          ref.watch(centerMembershipProvider).valueOrNull?.gradeId == null;
+      return _FillScrollable(
+        child: noCourse
+            ? const CenterNoCoursesState()
+            : const AppEmptyState(
+                icon: Icons.menu_book_rounded,
+                title: 'لا توجد مواد في هذا الكورس حاليًا',
+              ),
+      );
+    }
+    var index = 0;
+    final heroed = <int>{};
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.sm,
+        AppSpacing.lg,
+        AppSpacing.xl,
+      ),
+      children: [
+        _SubjectsHeader(count: count),
+        for (final (termIndex, term) in terms.indexed)
+          if (term.subjects.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.lg),
+            _TermHeader(term: term),
+            for (final subject in term.subjects)
+              Padding(
+                key: ValueKey('term-$termIndex-${subject.id}'),
+                padding: const EdgeInsets.only(top: AppSpacing.md),
+                child: Reveal(
+                  index: index++,
+                  child: SubjectLockGate(
+                    subjectId: subject.id,
+                    subjectName: subject.name,
+                    child: _SubjectCard(
+                      subject: subject,
+                      hero: heroed.add(subject.id),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+      ],
+    );
+  }
+}
+
+class _TermHeader extends StatelessWidget {
+  const _TermHeader({required this.term});
+
+  final TermGroup term;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    return Row(
+      children: [
+        CircleAvatar(
+          radius: 22,
+          backgroundColor: term.isCurrent
+              ? scheme.primaryContainer
+              : scheme.secondaryContainer,
+          child: Icon(
+            term.id == null
+                ? Icons.category_rounded
+                : Icons.calendar_month_rounded,
+            color: term.isCurrent
+                ? scheme.onPrimaryContainer
+                : scheme.onSecondaryContainer,
+          ),
+        ),
+        const SizedBox(width: AppSpacing.md),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                term.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: text.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              Text(
+                '${term.subjects.length} مادة',
+                style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ),
+        if (term.isCurrent)
+          StatusPill(
+            label: 'الترم الحالي',
+            icon: Icons.star_rounded,
+            color: scheme.primary,
+            filled: true,
+            dense: true,
+          ),
+      ],
     );
   }
 }

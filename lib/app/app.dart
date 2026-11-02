@@ -1,3 +1,8 @@
+import 'package:itaaleem/core/network/load_recovery.dart';
+import 'package:itaaleem/features/app_config/app_config_providers.dart';
+import 'package:itaaleem/features/settings/presentation/rate_app.dart'
+    show ratingWatcherProvider;
+import 'package:itaaleem/features/grade_change/grade_change_refresh.dart';
 import 'package:itaaleem/core/widgets/app_toast.dart';
 import 'package:itaaleem/app/router/app_router.dart';
 import 'package:itaaleem/core/theme/dynamic_theme.dart';
@@ -11,6 +16,8 @@ import 'package:itaaleem/core/widgets/capture_guard.dart';
 import 'package:itaaleem/core/widgets/no_connection_screen.dart';
 import 'package:itaaleem/features/auth/presentation/providers/auth_controller.dart';
 import 'package:itaaleem/features/auth/presentation/widgets/device_lock_dialog.dart';
+import 'package:itaaleem/features/parent/presentation/guardian_controller.dart';
+import 'package:itaaleem/features/parent/presentation/screens/parent_home_screen.dart';
 import 'package:itaaleem/features/center/presentation/providers/center_providers.dart';
 import 'package:itaaleem/features/settings/presentation/providers/theme_mode_provider.dart';
 import 'package:itaaleem/features/video/data/offline/offline_license_checker.dart';
@@ -36,11 +43,36 @@ class App extends ConsumerWidget {
     // FCM message listeners (foreground local notification, tap-to-navigate)
     // are set up exactly once regardless of auth state — `setupListeners` is
     // internally idempotent, so calling it on every rebuild is harmless.
-    ref.read(fcmServiceProvider).setupListeners();
+    final fcm = ref.read(fcmServiceProvider);
+    fcm.guardianHooks ??= GuardianPushHooks(
+      isGuardianMode: () =>
+          ref.read(guardianControllerProvider).valueOrNull != null,
+      sendToken: (token) =>
+          ref.read(guardianControllerProvider.notifier).api.sendFcmToken(token),
+      openChild: (studentId) {
+        final context = rootNavigatorKey.currentContext;
+        if (context == null) return;
+        context.go(parentHomePath);
+        context.push(parentChildPath(studentId));
+      },
+    );
+    fcm.setupListeners();
 
     // Keeps the offline-progress sync service alive (it listens to
     // connectivity and uploads pending progress whenever the network returns).
     ref.watch(offlineProgressSyncServiceProvider);
+
+    // `GET /app-config` at launch and on every resume.
+    ref.watch(appConfigLifecycleProvider);
+
+    // A course move approved/reverted by the center: applied once, on
+    // launch, resume or its push — no logout needed.
+    ref.watch(gradeChangeWatcherProvider);
+    ref.watch(loadRecoveryProvider);
+
+    // Every 7 days (not the first 3 days / first minute / mid-lesson): our
+    // sheet on Android, Apple's own requestReview on iOS.
+    ref.watch(ratingWatcherProvider);
 
     // Once per app launch, right after the session restores (`GET
     // /profile` — see AuthController.build): re-validates offline downloads
@@ -178,6 +210,8 @@ class _ConnectivityGate extends ConsumerWidget {
     // network.
     final auth = ref.watch(authControllerProvider);
     if (auth.isLoading || auth.valueOrNull != null) return child;
+    final guardian = ref.watch(guardianControllerProvider);
+    if (guardian.isLoading || guardian.valueOrNull != null) return child;
 
     // Read fresh on every rebuild this gate actually runs (driven by
     // connectivityStatusProvider changing) — covers the common case of

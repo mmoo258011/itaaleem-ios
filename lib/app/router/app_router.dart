@@ -1,4 +1,7 @@
 import 'package:itaaleem/features/auth/presentation/screens/force_change_password_screen.dart';
+import 'package:itaaleem/features/grade_change/grade_change_screen.dart';
+import 'package:itaaleem/features/news/presentation/news_screen.dart';
+import 'package:itaaleem/features/news/presentation/news_routes.dart';
 import 'package:itaaleem/features/center_admin/presentation/screens/center_dashboard_screen.dart';
 import 'package:itaaleem/features/center_admin/presentation/screens/center_request_approve_screen.dart';
 import 'package:itaaleem/features/center_admin/presentation/screens/center_activation_codes_screen.dart';
@@ -80,6 +83,13 @@ import 'package:itaaleem/features/center/data/models/center_review.dart';
 import 'package:itaaleem/features/center/presentation/screens/all_reviews_screen.dart';
 import 'package:itaaleem/features/center/presentation/screens/review_form_screen.dart';
 import 'package:itaaleem/features/update/presentation/screens/force_update_screen.dart';
+import 'package:itaaleem/features/parent/presentation/guardian_controller.dart';
+import 'package:itaaleem/features/parent/presentation/screens/parent_auth_screen.dart';
+import 'package:itaaleem/features/parent/presentation/screens/parent_child_screen.dart';
+import 'package:itaaleem/features/parent/presentation/screens/parent_home_screen.dart';
+import 'package:itaaleem/features/live/presentation/live_routes.dart';
+import 'package:itaaleem/features/live/presentation/screens/live_session_screen.dart';
+import 'package:itaaleem/features/live/presentation/screens/live_sessions_screen.dart';
 import 'package:itaaleem/app/router/page_transition.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
@@ -153,6 +163,10 @@ final rootNavigatorKey = GlobalKey<NavigatorState>();
 class _AppRefreshListenable extends ChangeNotifier {
   _AppRefreshListenable(Ref ref) {
     ref.listen(authControllerProvider, (previous, next) => notifyListeners());
+    ref.listen(
+      guardianControllerProvider,
+      (previous, next) => notifyListeners(),
+    );
     ref.listen(splashReleasedProvider, (previous, next) => notifyListeners());
     ref.listen(appSettingsProvider, (previous, next) => notifyListeners());
     ref.listen(updateStatusProvider, (previous, next) => notifyListeners());
@@ -219,6 +233,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return authState.valueOrNull != null ? homePath : loginPath;
       }
 
+      // Guardian ("ولي الأمر") session: confined to its own routes — never a
+      // student screen, content, video, PDF or activation.
+      final isGuardian =
+          ref.read(guardianControllerProvider).valueOrNull != null;
+      final isGuardianPath =
+          path == parentHomePath || path.startsWith('$parentHomePath/');
+      if (isGuardian && !isGuardianPath) {
+        final maintenanceOn =
+            ref.read(appSettingsProvider).valueOrNull?.maintenanceMode ?? false;
+        if (!(maintenanceOn && path == maintenancePath)) return parentHomePath;
+      }
+
       // Fails open: only an explicit `true` (a loaded, successful response)
       // gates the app. A still-loading or errored settings fetch must never
       // lock students out.
@@ -262,6 +288,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
 
       final isLoggedIn = authState.valueOrNull != null;
+      if (isGuardian) return null;
+      if (isGuardianPath) return isLoggedIn ? homePath : loginPath;
+      if (path == parentAuthPath) {
+        final parentAccessEnabled =
+            ref.read(appSettingsProvider).valueOrNull?.parentAccessEnabled ??
+            false;
+        if (isLoggedIn) return homePath;
+        return parentAccessEnabled ? null : loginPath;
+      }
       final isAuthRoute =
           path == loginPath ||
           path == registerPath ||
@@ -337,6 +372,34 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: loginPath,
         pageBuilder: (context, state) =>
             buildPageWithTransition(state: state, child: const LoginScreen()),
+      ),
+      GoRoute(
+        path: parentAuthPath,
+        pageBuilder: (context, state) => buildPageWithTransition(
+          state: state,
+          child: const ParentAuthScreen(),
+        ),
+      ),
+      GoRoute(
+        path: parentHomePath,
+        pageBuilder: (context, state) => buildPageWithTransition(
+          state: state,
+          // A child's name, grades and results — FLAG_SECURE / iOS shield.
+          child: const SecureScreen(child: ParentHomeScreen()),
+        ),
+        routes: [
+          GoRoute(
+            path: 'child/:id',
+            pageBuilder: (context, state) => buildPageWithTransition(
+              state: state,
+              child: SecureScreen(
+                child: ParentChildScreen(
+                  childId: int.tryParse(state.pathParameters['id'] ?? '') ?? 0,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       GoRoute(
         path: forceChangePasswordPath,
@@ -620,6 +683,49 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ),
           ),
         ),
+      ),
+      GoRoute(
+        path: gradeChangePath,
+        pageBuilder: (context, state) => buildPageWithTransition(
+          state: state,
+          child: const ContentWidthLimit.page(child: GradeChangeScreen()),
+        ),
+      ),
+      GoRoute(
+        path: newsPath,
+        pageBuilder: (context, state) => buildPageWithTransition(
+          state: state,
+          child: ContentWidthLimit.page(
+            child: NewsScreen(
+              focusPostId: int.tryParse(
+                state.uri.queryParameters['post'] ?? '',
+              ),
+            ),
+          ),
+        ),
+      ),
+      GoRoute(
+        path: liveSessionsPath,
+        pageBuilder: (context, state) => buildPageWithTransition(
+          state: state,
+          child: const ContentWidthLimit.page(child: LiveSessionsScreen()),
+        ),
+        routes: [
+          GoRoute(
+            path: ':id',
+            pageBuilder: (context, state) {
+              final extra = extraOf(state);
+              return buildPageWithTransition(
+                state: state,
+                child: LiveSessionScreen(
+                  sessionId:
+                      int.tryParse(state.pathParameters['id'] ?? '') ?? 0,
+                  subjectId: extra is int ? extra : null,
+                ),
+              );
+            },
+          ),
+        ],
       ),
       GoRoute(
         path: '/subject-detail/:id',

@@ -1,11 +1,21 @@
+import 'package:itaaleem/features/home/presentation/providers/content_refresh.dart';
 import 'package:itaaleem/features/certificates/certificates.dart';
+import 'package:itaaleem/features/news/presentation/news_routes.dart';
+import 'package:itaaleem/features/news/presentation/news_providers.dart';
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:itaaleem/core/network/api_endpoints.dart';
+import 'package:itaaleem/features/app_config/app_config.dart';
+import 'package:itaaleem/features/app_config/app_config_providers.dart';
+import 'package:itaaleem/features/grade_change/grade_change_api.dart';
+import 'package:itaaleem/features/grade_change/grade_change_screen.dart'
+    show gradeChangePath;
+import 'package:itaaleem/features/app_config/in_app_web_screen.dart';
 import 'package:itaaleem/core/providers/package_info_provider.dart';
 import 'package:itaaleem/features/center/data/models/center_json_mapper.dart';
 import 'package:itaaleem/features/settings/presentation/rate_app.dart';
+import 'package:itaaleem/features/parent/presentation/widgets/parent_code_card.dart';
 import 'package:itaaleem/core/widgets/app_button.dart';
 import 'package:itaaleem/core/widgets/app_toast.dart';
 import 'package:itaaleem/core/widgets/auth_shell.dart';
@@ -65,7 +75,9 @@ class AccountTab extends ConsumerWidget {
         center?.name ?? student?.centerJson?['name']?.toString().trim();
     final centerLogo =
         center?.logo ?? ApiEndpoints.mediaUrl(student?.centerLogo);
-    final rateUrl = ref.watch(rateAppUrlProvider);
+    final rateEnabled = ref.watch(rateAppEnabledProvider);
+    final menuItems = ref.watch(currentAppConfigProvider).menuItems;
+    final gradeChange = ref.watch(gradeChangeAvailableProvider).valueOrNull;
     final hasCertificates =
         ref.watch(certificatesProvider).valueOrNull?.isNotEmpty ?? false;
 
@@ -74,166 +86,222 @@ class AccountTab extends ConsumerWidget {
       value: SystemUiOverlayStyle.light,
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        body: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            _Header(
-              student: student,
-              centerName: (centerName?.isEmpty ?? true) ? null : centerName,
-              centerLogo: centerLogo,
-              gradeName: gradeName,
-            ),
-            Center(
-              child: ConstrainedBox(
-                // iPad: one readable column in the middle.
-                constraints: const BoxConstraints(maxWidth: 720),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.screenHorizontal,
-                    AppSpacing.sectionSpacing,
-                    AppSpacing.screenHorizontal,
-                    AppSpacing.sectionSpacing,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const _SectionLabel('حسابي'),
-                      _MenuCard(
-                        children: [
-                          _MenuTile(
-                            icon: Icons.person_outline_rounded,
-                            label: 'تعديل البيانات',
-                            onTap: () => context.push<void>(editProfilePath),
-                          ),
-                          _MenuTile(
-                            icon: Icons.lock_outline_rounded,
-                            label: 'تغيير كلمة السر',
-                            onTap: () => context.push<void>(changePasswordPath),
-                          ),
-                          if (!PlatformUtils.hideSubscriptions)
+        body: RefreshIndicator(
+          edgeOffset: MediaQuery.paddingOf(context).top,
+          onRefresh: () => refreshAll(ref),
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.zero,
+            children: [
+              _Header(
+                student: student,
+                centerName: (centerName?.isEmpty ?? true) ? null : centerName,
+                centerLogo: centerLogo,
+                gradeName: gradeName,
+              ),
+              Center(
+                child: ConstrainedBox(
+                  // iPad: one readable column in the middle.
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.screenHorizontal,
+                      AppSpacing.sectionSpacing,
+                      AppSpacing.screenHorizontal,
+                      AppSpacing.sectionSpacing,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const ParentCodeCard(),
+                        const _SectionLabel('حسابي'),
+                        _MenuCard(
+                          children: [
                             _MenuTile(
-                              icon: Icons.card_membership_outlined,
-                              label: 'اشتراكاتي',
+                              icon: Icons.person_outline_rounded,
+                              label: 'تعديل البيانات',
+                              onTap: () => context.push<void>(editProfilePath),
+                            ),
+                            _MenuTile(
+                              icon: Icons.lock_outline_rounded,
+                              label: 'تغيير كلمة السر',
                               onTap: () =>
-                                  context.push<void>(mySubscriptionsPath),
+                                  context.push<void>(changePasswordPath),
                             ),
-                          // An activated student can still redeem a code
-                          // for more subjects — except on iOS, where
-                          // unlocking content outside In-App Purchase isn't
-                          // allowed.
-                          if (!PlatformUtils.hideSubscriptions)
-                            const _MenuTile(
-                              icon: Icons.confirmation_number_outlined,
-                              label: 'تفعيل كود الاشتراك',
-                              onTap: pushActivationScreen,
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: AppSpacing.lg),
-                      const _SectionLabel('محتوايا'),
-                      _MenuCard(
-                        children: [
-                          // Hidden until the student has at least one.
-                          if (hasCertificates)
-                            _MenuTile(
-                              icon: Icons.workspace_premium_outlined,
-                              label: 'شهاداتي',
-                              onTap: () => showCertificatesSheet(context, ref),
-                            ),
-                          _MenuTile(
-                            icon: Icons.download_outlined,
-                            label: 'التحميلات',
-                            // A real GoRouter navigation — `/downloads` is
-                            // one of the paths the connectivity gate keeps
-                            // reachable offline, recognized by location.
-                            onTap: () => context.push(downloadsPath),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: AppSpacing.lg),
-                      const _SectionLabel('السنتر'),
-                      _MenuCard(
-                        children: [
-                          if (center != null && membership != null)
-                            _MenuTile(
-                              icon: Icons.support_agent_outlined,
-                              label: 'تواصل مع السنتر',
-                              onTap: () =>
-                                  context.push<void>(contactCenterPath),
-                            ),
-                          _MenuTile(
-                            icon: Icons.help_outline_rounded,
-                            label: 'الدعم',
-                            onTap: () => context.push<void>(supportPath),
-                          ),
-                          if (center != null && membership != null) ...[
-                            _MenuTile(
-                              icon: Icons.groups_outlined,
-                              label: 'تغيير الكورس',
-                              onTap: () => context.push<void>(
-                                '/select-grade/${center.id}',
+                            if (!PlatformUtils.hideSubscriptions)
+                              _MenuTile(
+                                icon: Icons.card_membership_outlined,
+                                label: 'اشتراكاتي',
+                                onTap: () =>
+                                    context.push<void>(mySubscriptionsPath),
                               ),
-                            ),
+                            // An activated student can still redeem a code
+                            // for more subjects — except on iOS, where
+                            // unlocking content outside In-App Purchase isn't
+                            // allowed.
+                            if (!PlatformUtils.hideSubscriptions)
+                              const _MenuTile(
+                                icon: Icons.confirmation_number_outlined,
+                                label: 'تفعيل كود الاشتراك',
+                                onTap: pushActivationScreen,
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        const _SectionLabel('محتوايا'),
+                        _MenuCard(
+                          children: [
+                            if (ref.watch(newsAvailableProvider))
+                              _MenuTile(
+                                icon: Icons.campaign_outlined,
+                                label: serverText(
+                                  context,
+                                  'news_title',
+                                  newsDefaultTitle,
+                                ),
+                                onTap: () => context.push(newsPath),
+                              ),
+                            // Hidden until the student has at least one.
+                            if (hasCertificates)
+                              _MenuTile(
+                                icon: Icons.workspace_premium_outlined,
+                                label: 'شهاداتي',
+                                onTap: () =>
+                                    showCertificatesSheet(context, ref),
+                              ),
                             _MenuTile(
-                              icon: Icons.logout_rounded,
-                              label: 'مغادرة السنتر',
-                              destructive: true,
-                              onTap: () =>
-                                  confirmLeaveCenter(context, ref, center.name),
+                              icon: Icons.download_outlined,
+                              label: 'التحميلات',
+                              // A real GoRouter navigation — `/downloads` is
+                              // one of the paths the connectivity gate keeps
+                              // reachable offline, recognized by location.
+                              onTap: () => context.push(downloadsPath),
                             ),
                           ],
-                          if (hasUsableSocialLinks(links))
-                            Padding(
-                              padding: const EdgeInsets.all(AppSpacing.base),
-                              child: SocialLinksBar(socialLinks: links),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: AppSpacing.lg),
-                      const _SectionLabel('التطبيق'),
-                      _MenuCard(
-                        children: [
-                          const _DarkModeTile(),
-                          if (rateUrl != null)
-                            _MenuTile(
-                              icon: Icons.star_outline_rounded,
-                              label: 'قيّم التطبيق ⭐',
-                              onTap: () => openRateApp(context, rateUrl),
-                            ),
-                          _MenuTile(
-                            icon: Icons.privacy_tip_outlined,
-                            label: 'سياسة الخصوصية',
-                            onTap: () => openRateApp(context, _privacyUrl),
-                          ),
-                          _MenuTile(
-                            icon: Icons.info_outline_rounded,
-                            label: 'عن التطبيق',
-                            onTap: () => context.push<void>(aboutPath),
-                          ),
-                          const _DeleteAccountTile(),
-                        ],
-                      ),
-                      const SizedBox(height: AppSpacing.xl),
-                      const _LogoutButton(),
-                      const SizedBox(height: AppSpacing.md),
-                      Center(
-                        child: Text(
-                          'منصة أونلاين v$version',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                fontSize: 11,
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurfaceVariant,
-                              ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: AppSpacing.lg),
+                        const _SectionLabel('السنتر'),
+                        _MenuCard(
+                          children: [
+                            if (center != null && membership != null)
+                              _MenuTile(
+                                icon: Icons.support_agent_outlined,
+                                label: 'تواصل مع السنتر',
+                                onTap: () =>
+                                    context.push<void>(contactCenterPath),
+                              ),
+                            _MenuTile(
+                              icon: Icons.help_outline_rounded,
+                              label: 'الدعم',
+                              onTap: () => context.push<void>(supportPath),
+                            ),
+                            if (center != null && membership != null) ...[
+                              // With `grade_change` on, moving goes through the
+                              // center's approval (the old direct pick would
+                              // silently become a request server-side).
+                              _MenuTile(
+                                icon: Icons.groups_outlined,
+                                label: 'تغيير الكورس',
+                                onTap: () => context.push<void>(
+                                  // Still checking `options` with the flag on:
+                                  // never fall back to the direct pick.
+                                  (gradeChange ??
+                                          configFeature(
+                                                ref.read(
+                                                  currentAppConfigProvider,
+                                                ),
+                                                'grade_change',
+                                              ) ==
+                                              true)
+                                      ? gradeChangePath
+                                      : '/select-grade/${center.id}',
+                                ),
+                              ),
+                              _MenuTile(
+                                icon: Icons.logout_rounded,
+                                label: 'مغادرة السنتر',
+                                destructive: true,
+                                onTap: () => confirmLeaveCenter(
+                                  context,
+                                  ref,
+                                  center.name,
+                                ),
+                              ),
+                            ],
+                            if (hasUsableSocialLinks(links))
+                              Padding(
+                                padding: const EdgeInsets.all(AppSpacing.base),
+                                child: SocialLinksBar(socialLinks: links),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        const _SectionLabel('التطبيق'),
+                        _MenuCard(
+                          children: [
+                            const _DarkModeTile(),
+                            if (rateEnabled)
+                              _MenuTile(
+                                icon: Icons.star_outline_rounded,
+                                label: 'قيّم التطبيق ⭐',
+                                onTap: () => openRateApp(context),
+                              ),
+                            _MenuTile(
+                              icon: Icons.privacy_tip_outlined,
+                              label: 'سياسة الخصوصية',
+                              onTap: () =>
+                                  openConfigLink(context, _privacyLink(ref)),
+                            ),
+                            _MenuTile(
+                              icon: Icons.info_outline_rounded,
+                              label: 'عن التطبيق',
+                              onTap: () => context.push<void>(aboutPath),
+                            ),
+                            const _DeleteAccountTile(),
+                          ],
+                        ),
+                        // `menu_items` from `GET /app-config`, under the
+                        // built-in ones (already filtered for this platform).
+                        if (menuItems.isNotEmpty) ...[
+                          const SizedBox(height: AppSpacing.lg),
+                          _MenuCard(
+                            children: [
+                              for (final item in menuItems)
+                                _MenuTile(
+                                  icon: configIcon(item.icon),
+                                  label: item.title,
+                                  onTap: () => openConfigLink(
+                                    context,
+                                    item.url!,
+                                    title: item.title,
+                                    type: item.type,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
+                        const SizedBox(height: AppSpacing.xl),
+                        const _LogoutButton(),
+                        const SizedBox(height: AppSpacing.md),
+                        Center(
+                          child: Text(
+                            'منصة أونلاين v$version',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  fontSize: 11,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -241,6 +309,12 @@ class AccountTab extends ConsumerWidget {
 }
 
 const _privacyUrl = 'https://api.itaaleem.com/privacy';
+
+/// `links.privacy` from `GET /app-config`, else the built-in page.
+String _privacyLink(WidgetRef ref) {
+  final config = ref.read(currentAppConfigProvider);
+  return config.link('privacy', config.link('privacy_url', _privacyUrl));
+}
 
 class _Header extends StatelessWidget {
   const _Header({

@@ -2,7 +2,16 @@
 
 > ⚠️ **ارفع الـ build على App Store Connect / TestFlight بس. ما تبعتوش للمراجعة (Submit for Review) غير بعد ما محمود يقول. فيه مراجعة شغالة دلوقتي على 3.0.0 (42).**
 
-**Current version: 3.0.2 (49)** (from `pubspec.yaml`; `Info.plist` reads `FLUTTER_BUILD_NAME` / `FLUTTER_BUILD_NUMBER`). The build number must stay above the last uploaded iOS build (42).
+**Current version: 3.1.0 (51)** (from `pubspec.yaml`; `Info.plist` reads `FLUTTER_BUILD_NAME` / `FLUTTER_BUILD_NUMBER`). The build number must stay above the last uploaded iOS build (42).
+
+### الجديد في 3.1.0 (51)
+- قناة الأخبار (شاشة القناة، ألبوم صور، كارت في الرئيسية، إشعارات).
+- طلب تغيير الكورس/الصف ومتابعة حالته.
+- تقييم التطبيق جوا التطبيق (`in_app_review` — plugin جديد، `pod install` هيضيفه، مالوش إذن في Info.plist).
+- إعدادات التطبيق من السيرفر (روابط/كروت/نصوص) — أي نص فيه سعر أو اشتراك أو دفع بيتشال على iOS.
+- تحسين استرجاع التحميل بعد فشل الشبكة.
+
+`ios/` ما اتغيرش عن 3.0.2 (نفس الـ signing و Info.plist و GoogleService-Info و PrivacyInfo). الـ obfuscation شغال زي ما هو (الأمر تحت).
 
 ## Command line (recommended)
 

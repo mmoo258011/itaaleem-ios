@@ -1,3 +1,5 @@
+import 'package:itaaleem/core/config/obf.dart';
+
 /// Central place for the API base URL and endpoint paths, per APP_SPEC.md.
 ///
 /// `API_BASE_URL` is injected via `--dart-define=API_BASE_URL=...` at build
@@ -5,10 +7,12 @@
 class ApiEndpoints {
   ApiEndpoints._();
 
-  static const String baseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'https://api.itaaleem.com/api/v1',
-  );
+  static const String _baseUrlOverride = String.fromEnvironment('API_BASE_URL');
+
+  /// `--dart-define=API_BASE_URL=…`, else the production API.
+  static final String baseUrl = _baseUrlOverride.isNotEmpty
+      ? _baseUrlOverride
+      : Obf.apiBase;
 
   // --- Auth ---
   static const String register = '/register';
@@ -27,14 +31,12 @@ class ApiEndpoints {
   /// backend), despite APP_SPEC.md's original draft mentioning one.
   static const String profile = '/profile';
 
-  /// `PUT /password` — confirmed against the live backend; APP_SPEC.md's
-  /// `/profile/password` 404s.
-  static const String password = '/password';
+  /// `POST /profile/password` `{current_password, password,
+  /// password_confirmation}`.
+  static const String password = '/profile/password';
 
   // --- Account ---
-  /// `DELETE /account` — permanently deletes the student's account and all
-  /// associated data.
-  static const String account = '/account';
+  /// Account deletion is `DELETE /profile` ([profile]).
 
   // --- Centers ---
   /// `GET /centers?search=` — paginated `{items, meta}`, not confirmed in
@@ -118,7 +120,9 @@ class ApiEndpoints {
   static const String publicTeachers = '/public/teachers';
 
   // --- Lectures ---
-  static String lectureDetails(int id) => '/lectures/$id';
+  /// `GET /lessons/{id}` (the old `/lectures/{id}` is kept server-side only
+  /// for older app versions).
+  static String lectureDetails(int id) => '/lessons/$id';
 
   /// `GET /lectures/{id}/playback` — a signed, time-limited streaming URL
   /// for the lecture's video (plus optional per-quality alternates and any
@@ -256,8 +260,6 @@ class ApiEndpoints {
   static const String notifications = '/notifications';
   static String notificationRead(String id) => '/notifications/$id/read';
 
-  /// `DELETE /notifications/{id}`.
-  static String notification(String id) => '/notifications/$id';
   static const String notificationsReadAll = '/notifications/mark-all-read';
 
   /// `GET /notifications/unread-count`.
@@ -303,6 +305,24 @@ class ApiEndpoints {
   /// Public — no auth token, reachable even while logged out (e.g. from the
   /// login screen's support links).
   static const String publicSettings = '/public/settings';
+
+  /// `GET /app-config` — dashboard-controlled features, texts, links, menu
+  /// items, home cards and maintenance. A 404 (older server) = defaults.
+  static const String appConfig = '/app-config';
+
+  // --- News channel (3.1.0; 403 when the channel is off) ---
+  /// `GET /news?page=` — `{posts, pagination, reactions_available}`.
+  static const String news = '/news';
+  static const String newsUnreadCount = '/news/unread-count';
+  static const String newsSeen = '/news/seen';
+  static String newsView(int id) => '/news/$id/view';
+  static String newsReact(int id) => '/news/$id/react';
+
+  // --- Grade change (3.1.0; 403 when the feature is off) ---
+  static const String gradeChangeOptions = '/grade-change/options';
+  static const String gradeChange = '/grade-change';
+  static const String gradeChangeStatus = '/grade-change/status';
+  static const String gradeChangeCancel = '/grade-change/cancel';
 
   /// The API returns storage paths (e.g. `courses/xxx.png`), not full URLs.
   /// Resolves one against the server's public storage disk

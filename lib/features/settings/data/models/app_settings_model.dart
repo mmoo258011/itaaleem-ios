@@ -18,6 +18,9 @@ class AppSettingsModel extends AppSettings {
     super.sequentialMode,
     super.rateAppEnabled,
     super.rateAppUrl,
+    super.parentAccessEnabled,
+    super.termsEnabled,
+    super.liveEnabled,
   });
 
   factory AppSettingsModel.fromJson(
@@ -47,6 +50,9 @@ class AppSettingsModel extends AppSettings {
               (rateUrl.startsWith('https://') || rateUrl.startsWith('http://'))
           ? rateUrl
           : null,
+      parentAccessEnabled: json['parent_access_enabled'] == true,
+      termsEnabled: json['terms_enabled'] == true,
+      liveEnabled: json['live_enabled'] == true,
     );
   }
 

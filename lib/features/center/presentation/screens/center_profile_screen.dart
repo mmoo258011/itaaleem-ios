@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:itaaleem/app/router/app_router.dart';
 import 'package:itaaleem/core/widgets/app_button.dart';
 import 'package:itaaleem/core/widgets/app_toast.dart';
 import 'package:itaaleem/core/widgets/rating_chip.dart';
@@ -18,6 +17,7 @@ import 'package:itaaleem/core/design/design.dart';
 import 'package:itaaleem/core/widgets/app_shimmer.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:itaaleem/features/grade_change/grade_change_screen.dart';
 import 'package:itaaleem/core/utils/safe_url.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:itaaleem/core/theme/app_palette.dart';
@@ -433,7 +433,7 @@ class JoinCenterButtonState extends ConsumerState<JoinCenterButton> {
     setState(() => _joining = true);
 
     try {
-      final failure = await ref
+      final (:failure, :result) = await ref
           .read(centerMembershipProvider.notifier)
           .join(centerId: widget.center.id, centerCode: widget.center.code)
           .timeout(const Duration(seconds: 10));
@@ -446,11 +446,12 @@ class JoinCenterButtonState extends ConsumerState<JoinCenterButton> {
       }
 
       setState(() => _joining = false);
-      AppToast.showSuccess(
-        context,
-        'تم الانضمام لـ ${widget.center.name} بنجاح 🎉',
-      );
-      context.go(homePath);
+      if (!goHomeAfterJoin(context, ref, result)) {
+        AppToast.showSuccess(
+          context,
+          'تم الانضمام لـ ${widget.center.name} بنجاح 🎉',
+        );
+      }
     } on TimeoutException {
       if (!mounted) return;
       setState(() => _joining = false);

@@ -58,6 +58,19 @@ Future<String> appVersionString() => _appVersion ??= () async {
 }();
 Future<String>? _appVersion;
 
+/// `(version, build)` from package_info_plus — cached; empty strings if it
+/// fails.
+Future<({String version, String build})> appVersionParts() =>
+    _appVersionParts ??= () async {
+      try {
+        final info = await PackageInfo.fromPlatform();
+        return (version: info.version, build: info.buildNumber);
+      } catch (_) {
+        return (version: '', build: '');
+      }
+    }();
+Future<({String version, String build})>? _appVersionParts;
+
 /// Generates (once) and persists a stable, app-scoped UUID device id — not
 /// a raw OS identifier — plus a human-readable device name and platform
 /// string, per plan §3/§8.

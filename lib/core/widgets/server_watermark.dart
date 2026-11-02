@@ -23,7 +23,12 @@ class ProtectedWatermark extends ConsumerWidget {
     required this.lessonId,
     required this.legacy,
     this.isPdf = false,
+    this.config,
   });
+
+  /// A watermark object already in hand (e.g. `live_session.watermark`) —
+  /// used instead of looking one up by [lessonId].
+  final WatermarkConfig? config;
 
   /// The lesson/lecture (same id space) — `null` when unknown.
   final int? lessonId;
@@ -34,7 +39,8 @@ class ProtectedWatermark extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final config = ref.watch(effectiveWatermarkProvider(lessonId));
+    final config =
+        this.config ?? ref.watch(effectiveWatermarkProvider(lessonId));
     if (config == null) {
       return Stack(
         fit: StackFit.expand,

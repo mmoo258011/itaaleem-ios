@@ -256,6 +256,7 @@ class AuthRepositoryImpl implements AuthRepository {
 
   Future<void> _persistSession(AuthResponseModel response) async {
     await _secureStorage.writeAuthToken(response.token);
+    await _secureStorage.writeSessionType('student');
     await _secureStorage.writeStudentProfileJson(
       jsonEncode(response.student.toJson()),
     );

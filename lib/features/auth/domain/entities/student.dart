@@ -18,6 +18,7 @@ class Student {
     this.hasPaidAccess = false,
     this.role,
     this.mustChangePassword = false,
+    this.parentCode,
   });
 
   final int id;
@@ -25,6 +26,10 @@ class Student {
   /// `must_change_password` — the center set a temporary password; the app
   /// blocks everything behind "تغيير كلمة السر" until it's changed.
   final bool mustChangePassword;
+
+  /// `user.parent_code` — only sent when "متابعة ولي الأمر" is on for the
+  /// student's center; `null` hides the parent-code card.
+  final String? parentCode;
 
   /// The user's `role` from `GET /profile` / `/login` (`"student"` for
   /// every regular account). `null` when the response didn't carry one —

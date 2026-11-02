@@ -1,56 +1,129 @@
+import 'dart:async';
+
+import 'package:itaaleem/core/config/obf.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:in_app_review/in_app_review.dart';
+import 'package:itaaleem/app/router/app_router.dart';
 import 'package:itaaleem/core/theme/app_spacing.dart';
 import 'package:itaaleem/core/utils/platform_utils.dart';
-import 'package:itaaleem/core/utils/safe_url.dart';
 import 'package:itaaleem/core/widgets/app_toast.dart';
+import 'package:itaaleem/features/app_config/app_config.dart';
+import 'package:itaaleem/features/app_config/app_config_providers.dart';
+import 'package:itaaleem/features/auth/presentation/providers/auth_controller.dart';
 import 'package:itaaleem/features/center_admin/presentation/widgets/admin_common.dart';
-import 'package:itaaleem/features/settings/presentation/providers/settings_providers.dart';
+import 'package:itaaleem/features/rating/rating_policy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-/// The store link from `rate_app`, or `null` while it's off / missing.
-final rateAppUrlProvider = Provider<String?>((ref) {
-  final settings = ref.watch(appSettingsProvider).valueOrNull;
-  if (settings == null || !settings.rateAppEnabled) return null;
-  return settings.rateAppUrl;
-});
+/// App Store id (the Play listing comes from the package name).
+final _appStoreId = Obf.appStoreId;
 
-/// Opens the store page outside the app.
-Future<void> openRateApp(BuildContext context, String url) async {
-  final uri = Uri.tryParse(url);
-  final ok =
-      uri != null &&
-      await launchUrlSafely(uri, mode: LaunchMode.externalApplication);
-  if (!ok && context.mounted) AppToast.showError(context, 'تعذر فتح الرابط');
+// Device-level on purpose (kept out of the logout wipe): the prompt is about
+// the app, not the account.
+const _installedKey = 'rating_installed_at';
+const _lastShownKey = 'rating_last_shown';
+const _ratedKey = 'rating_done';
+
+/// Whether «قيّم التطبيق» shows in the profile (`rating.enabled`, default on).
+final rateAppEnabledProvider = Provider<bool>(
+  (ref) => ref.watch(currentAppConfigProvider).rating.enabled,
+);
+
+/// The store page: App Store on iOS, Google Play on Android.
+Future<void> openRateApp(BuildContext context) async {
+  try {
+    await InAppReview.instance.openStoreListing(appStoreId: _appStoreId);
+  } catch (_) {
+    if (context.mounted) AppToast.showError(context, 'تعذر فتح المتجر');
+  }
 }
 
-/// Lectures seen completed, across subjects. Device-level on purpose (kept
-/// out of the logout wipe list) — the prompt is about the app, not the
-/// account.
-const _completedKey = 'rate_prompt_completed_ids';
-const _shownKey = 'rate_prompt_shown';
-const _threshold = 5;
+/// Kept alive by the app: checks every couple of minutes (and on resume)
+/// whether it's a good moment to ask for a rating — see
+/// [shouldPromptRating].
+final ratingWatcherProvider = Provider<void>((ref) {
+  final sessionStart = DateTime.now();
+  var asking = false;
 
-/// Android only: once the student has completed [_threshold] lectures, a
-/// light one-time "عاجبك التطبيق؟" sheet. Never again after it's shown.
-Future<void> maybePromptRateApp(
-  BuildContext context,
-  WidgetRef ref,
-  Iterable<int> completedLessonIds,
-) async {
-  if (PlatformUtils.isIOS) return;
+  Future<void> check() async {
+    if (asking) return;
+    if (ref.read(authControllerProvider).valueOrNull == null) return;
+    final context = rootNavigatorKey.currentContext;
+    if (context == null || !context.mounted) return;
+    final location = ref
+        .read(appRouterProvider)
+        .routerDelegate
+        .currentConfiguration
+        .uri
+        .path;
+    asking = true;
+    try {
+      await _maybePrompt(
+        context,
+        config: ref.read(currentAppConfigProvider).rating,
+        sessionAge: DateTime.now().difference(sessionStart),
+        busy: isBusyLocation(location),
+      );
+    } finally {
+      asking = false;
+    }
+  }
+
+  // Records the install date on the first run of this version.
+  unawaited(_installedAt());
+  final timer = Timer.periodic(
+    const Duration(minutes: 2),
+    (_) => unawaited(check()),
+  );
+  final lifecycle = AppLifecycleListener(onResume: () => unawaited(check()));
+  ref.onDispose(() {
+    timer.cancel();
+    lifecycle.dispose();
+  });
+});
+
+Future<DateTime> _installedAt() async {
   final prefs = await SharedPreferences.getInstance();
-  if (prefs.getBool(_shownKey) ?? false) return;
-  final ids = {...?prefs.getStringList(_completedKey)}
-    ..addAll(completedLessonIds.map((e) => '$e'));
-  await prefs.setStringList(_completedKey, ids.toList());
-  if (ids.length < _threshold) return;
-  final url = ref.read(rateAppUrlProvider);
-  if (url == null || !context.mounted) return;
-  await prefs.setBool(_shownKey, true);
-  if (!context.mounted) return;
+  final stored = prefs.getInt(_installedKey);
+  if (stored != null) return DateTime.fromMillisecondsSinceEpoch(stored);
+  final now = DateTime.now();
+  await prefs.setInt(_installedKey, now.millisecondsSinceEpoch);
+  return now;
+}
 
+Future<void> _maybePrompt(
+  BuildContext context, {
+  required RatingConfig config,
+  required Duration sessionAge,
+  required bool busy,
+}) async {
+  final prefs = await SharedPreferences.getInstance();
+  final last = prefs.getInt(_lastShownKey);
+  final now = DateTime.now();
+  final ok = shouldPromptRating(
+    now: now,
+    installedAt: await _installedAt(),
+    lastShown: last == null ? null : DateTime.fromMillisecondsSinceEpoch(last),
+    rated: prefs.getBool(_ratedKey) ?? false,
+    sessionAge: sessionAge,
+    busy: busy,
+    config: config,
+  );
+  if (!ok || !context.mounted) return;
+  // Counted as shown up front: closing the sheet = «بعدين» (7 days).
+  await prefs.setInt(_lastShownKey, now.millisecondsSinceEpoch);
+
+  if (PlatformUtils.isIOS) {
+    // Apple 5.6.1: no custom prompt — Apple decides whether to show its own.
+    try {
+      if (await InAppReview.instance.isAvailable()) {
+        await InAppReview.instance.requestReview();
+      }
+    } catch (_) {}
+    return;
+  }
+
+  if (!context.mounted) return;
   final rate = await showModalBottomSheet<bool>(
     context: context,
     showDragHandle: true,
@@ -72,7 +145,7 @@ Future<void> maybePromptRateApp(
               Icon(Icons.star_rounded, size: 44, color: scheme.primary),
               const SizedBox(height: AppSpacing.sm),
               Text(
-                'عاجبك التطبيق؟ قيّمه',
+                'عاجبك التطبيق؟ قيّمنا على جوجل بلاي ⭐',
                 textAlign: TextAlign.center,
                 style: text.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
@@ -93,7 +166,7 @@ Future<void> maybePromptRateApp(
               const SizedBox(height: AppSpacing.sm),
               TextButton(
                 onPressed: () => Navigator.of(sheetContext).pop(false),
-                child: const Text('لاحقاً'),
+                child: const Text('بعدين'),
               ),
             ],
           ),
@@ -101,6 +174,8 @@ Future<void> maybePromptRateApp(
       );
     },
   );
+  if (rate != true) return;
+  await prefs.setBool(_ratedKey, true);
   await waitForRouteExit();
-  if (rate == true && context.mounted) await openRateApp(context, url);
+  if (context.mounted) await openRateApp(context);
 }

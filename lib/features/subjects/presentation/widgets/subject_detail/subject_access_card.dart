@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:itaaleem/features/app_config/app_config_providers.dart'
+    show serverText;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:itaaleem/core/error/failure.dart';
@@ -362,7 +364,7 @@ class _SubjectAccessCardViewState extends ConsumerState<SubjectAccessCardView> {
             if (pending)
               _StatusBanner(
                 icon: Icons.hourglass_top_rounded,
-                title: 'طلبك قيد المراجعة',
+                title: serverText(context, 'waiting', 'طلبك قيد المراجعة'),
                 background: scheme.secondaryContainer,
                 foreground: scheme.onSecondaryContainer,
               )

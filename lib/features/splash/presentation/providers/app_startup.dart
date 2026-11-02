@@ -8,6 +8,7 @@ import 'package:itaaleem/features/auth/presentation/providers/signed_in_before_p
 import 'package:itaaleem/features/center/presentation/providers/center_providers.dart';
 import 'package:itaaleem/features/onboarding/presentation/providers/onboarding_provider.dart';
 import 'package:itaaleem/features/onboarding/presentation/providers/permissions_onboarding_provider.dart';
+import 'package:itaaleem/features/parent/presentation/guardian_controller.dart';
 
 /// The splash's logo — also the native launch screens' artwork, so the
 /// native → Flutter handoff shows the same image in the same place.
@@ -57,6 +58,7 @@ final startupWorkProvider = FutureProvider<void>((ref) async {
 
   await Future.wait([
     sessionAndCenter(),
+    settle(ref.read(guardianControllerProvider.future)),
     settle(ref.read(onboardingSeenProvider.future)),
     settle(ref.read(permissionsOnboardingSeenProvider.future)),
     settle(ref.read(signedInBeforeProvider.future)),

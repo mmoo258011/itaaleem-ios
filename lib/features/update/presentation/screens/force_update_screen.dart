@@ -2,6 +2,7 @@ import 'package:itaaleem/core/widgets/app_toast.dart';
 import 'package:itaaleem/features/update/presentation/providers/update_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:itaaleem/core/utils/platform_utils.dart';
 import 'package:itaaleem/core/utils/safe_url.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:itaaleem/core/theme/app_palette.dart';
@@ -11,11 +12,41 @@ import 'package:itaaleem/core/theme/app_spacing.dart';
 /// `force_update` is true on `GET /public/app-version`. [PopScope] blocks
 /// the back button, and there is no other route out: the only action is
 /// opening [UpdateStatus.updateUrl] in an external app store/browser.
-class ForceUpdateScreen extends ConsumerWidget {
+/// Coming back from the background re-checks the version, so the screen
+/// lets go by itself once the server drops the requirement (or the check
+/// fails — see [updateStatusProvider]).
+class ForceUpdateScreen extends ConsumerStatefulWidget {
   const ForceUpdateScreen({super.key});
 
+  @override
+  ConsumerState<ForceUpdateScreen> createState() => _ForceUpdateScreenState();
+}
+
+class _ForceUpdateScreenState extends ConsumerState<ForceUpdateScreen>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.invalidate(appVersionInfoProvider);
+    }
+  }
+
   Future<void> _openUpdateUrl(BuildContext context, String? url) async {
-    if (url == null || url.isEmpty) return;
+    if (url == null || url.isEmpty) {
+      url = PlatformUtils.isIOS ? appStoreFallbackUrl : playStoreFallbackUrl;
+    }
     final uri = Uri.tryParse(url);
     final launched = uri != null
         ? await launchUrlSafely(uri, mode: LaunchMode.externalApplication)
@@ -26,7 +57,7 @@ class ForceUpdateScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final status = ref.watch(updateStatusProvider).valueOrNull;
 
     return PopScope(

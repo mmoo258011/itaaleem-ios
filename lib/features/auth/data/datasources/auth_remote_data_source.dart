@@ -159,7 +159,7 @@ class AuthRemoteDataSource {
     required String newPassword,
     required String newPasswordConfirmation,
   }) async {
-    await _dio.put<Map<String, dynamic>>(
+    await _dio.post<Map<String, dynamic>>(
       ApiEndpoints.password,
       data: {
         'current_password': currentPassword,
@@ -170,21 +170,7 @@ class AuthRemoteDataSource {
   }
 
   Future<void> deleteAccount() async {
-    Response<dynamic> response;
-    try {
-      response = await _dio.delete<dynamic>(ApiEndpoints.account);
-    } on DioException catch (e) {
-      if (kDebugMode) {
-        debugPrint(
-          '>>> DELETE ACCOUNT failed (${ApiEndpoints.account}): '
-          '${e.response?.statusCode} ${e.response?.data ?? e.message}',
-        );
-      }
-      // Route may live at DELETE /profile instead — retry once on 404/405.
-      final status = e.response?.statusCode;
-      if (status != 404 && status != 405) rethrow;
-      response = await _dio.delete<dynamic>(ApiEndpoints.profile);
-    }
+    final response = await _dio.delete<dynamic>(ApiEndpoints.profile);
     if (kDebugMode) {
       debugPrint(
         '>>> DELETE ACCOUNT response: ${response.statusCode} ${response.data}',

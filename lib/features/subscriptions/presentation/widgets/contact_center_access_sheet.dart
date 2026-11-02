@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:itaaleem/features/app_config/app_config_providers.dart'
+    show serverText;
 import 'package:go_router/go_router.dart';
 import 'package:itaaleem/app/router/app_router.dart';
 import 'package:itaaleem/core/theme/app_spacing.dart';
@@ -65,7 +67,9 @@ Future<void> showContactCenterAccessSheet(BuildContext context) {
                 );
               },
               icon: const Icon(Icons.support_agent_rounded),
-              label: const Text('تواصل مع المركز'),
+              label: Text(
+                serverText(context, 'contact_center', 'تواصل مع المركز'),
+              ),
             ),
           ],
         ),

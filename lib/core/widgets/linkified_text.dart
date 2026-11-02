@@ -1,91 +1,148 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:itaaleem/core/utils/safe_url.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-final _urlPattern = RegExp(
-  r'((https?:\/\/)|(www\.))[^\s]+',
-  caseSensitive: false,
-);
+/// `https://…` runs inside plain text. Only https: anything else stays text.
+final _httpsLink = RegExp(r'https://[^\s<>"]+', caseSensitive: false);
 
-/// Plain [Text] with any URLs in [text] (`https://…`, `http://…`, `www…`)
-/// turned into tappable, distinctly-colored spans that open in the external
-/// browser via `url_launcher`. Trailing punctuation (`.`, `,`, `)`, ...)
-/// right after a URL is excluded from the link so a sentence-ending period
-/// doesn't get swallowed into it.
-class LinkifiedText extends StatelessWidget {
+/// Trailing punctuation that ends a sentence, not the link.
+final _trailing = RegExp(r'[.,!?؛،:)\]»"]+$');
+
+/// One run of [splitLinks]: plain text or a link.
+typedef TextRun = ({String text, bool isLink});
+
+/// Splits [text] into plain runs and https links (never HTML).
+List<TextRun> splitLinks(String text) {
+  final runs = <TextRun>[];
+  var at = 0;
+  for (final m in _httpsLink.allMatches(text)) {
+    var link = m.group(0)!;
+    final tail = _trailing.firstMatch(link)?.group(0) ?? '';
+    link = link.substring(0, link.length - tail.length);
+    if (m.start > at) {
+      runs.add((text: text.substring(at, m.start), isLink: false));
+    }
+    if (link.length > 'https://'.length) {
+      runs.add((text: link, isLink: true));
+    } else {
+      runs.add((text: link, isLink: false));
+    }
+    at = m.start + link.length;
+  }
+  if (at < text.length) runs.add((text: text.substring(at), isLink: false));
+  return runs;
+}
+
+/// Plain text with tappable https links, clamped to [maxLines] behind
+/// «عرض المزيد» when long.
+class LinkifiedText extends StatefulWidget {
   const LinkifiedText(
     this.text, {
     super.key,
+    required this.onLink,
     this.style,
-    this.linkColor,
-    this.maxLines,
-    this.overflow,
+    this.maxLines = 8,
   });
 
   final String text;
+  final ValueChanged<String> onLink;
   final TextStyle? style;
-  final Color? linkColor;
-  final int? maxLines;
-  final TextOverflow? overflow;
+  final int maxLines;
 
   @override
-  Widget build(BuildContext context) {
-    final matches = _urlPattern.allMatches(text).toList();
-    if (matches.isEmpty) {
-      return Text(text, style: style, maxLines: maxLines, overflow: overflow);
+  State<LinkifiedText> createState() => _LinkifiedTextState();
+}
+
+class _LinkifiedTextState extends State<LinkifiedText> {
+  bool _expanded = false;
+  final _recognizers = <TapGestureRecognizer>[];
+
+  @override
+  void dispose() {
+    for (final r in _recognizers) {
+      r.dispose();
     }
+    super.dispose();
+  }
 
-    final color = linkColor ?? Theme.of(context).colorScheme.primary;
-    final spans = <InlineSpan>[];
-    var cursor = 0;
-
-    for (final match in matches) {
-      if (match.start > cursor) {
-        spans.add(TextSpan(text: text.substring(cursor, match.start)));
-      }
-
-      var end = match.end;
-      while (end > match.start && _isTrailingPunctuation(text[end - 1])) {
-        end--;
-      }
-      final rawUrl = text.substring(match.start, end);
-      final url = rawUrl.startsWith('www.') ? 'https://$rawUrl' : rawUrl;
-
-      spans.add(
-        TextSpan(
-          text: rawUrl,
-          style: (style ?? const TextStyle()).copyWith(
-            color: color,
-            fontWeight: FontWeight.w700,
-            decoration: TextDecoration.underline,
-          ),
-          recognizer: TapGestureRecognizer()
-            ..onTap = () => launchUrlSafely(
-              Uri.parse(url),
-              mode: LaunchMode.externalApplication,
-            ),
-        ),
-      );
-
-      if (end < match.end) {
-        spans.add(TextSpan(text: text.substring(end, match.end)));
-      }
-      cursor = match.end;
+  TextSpan _span(TextStyle base, Color linkColor) {
+    for (final r in _recognizers) {
+      r.dispose();
     }
-
-    if (cursor < text.length) {
-      spans.add(TextSpan(text: text.substring(cursor)));
-    }
-
-    return Text.rich(
-      TextSpan(style: style, children: spans),
-      maxLines: maxLines,
-      overflow: overflow ?? TextOverflow.clip,
+    _recognizers.clear();
+    return TextSpan(
+      style: base,
+      children: [
+        for (final run in splitLinks(widget.text))
+          if (run.isLink)
+            TextSpan(
+              text: run.text,
+              style: TextStyle(
+                color: linkColor,
+                decoration: TextDecoration.underline,
+                decorationColor: linkColor,
+              ),
+              recognizer:
+                  (TapGestureRecognizer()
+                        ..onTap = () => widget.onLink(run.text))
+                      .also(_recognizers.add),
+            )
+          else
+            TextSpan(text: run.text),
+      ],
     );
   }
 
-  static bool _isTrailingPunctuation(String char) {
-    return '.,!?؟،؛;:)]}'.contains(char);
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final base =
+        widget.style ??
+        Theme.of(context).textTheme.bodyLarge ??
+        const TextStyle();
+    final span = _span(base, scheme.primary);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final painter = TextPainter(
+          text: span,
+          maxLines: widget.maxLines,
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+        )..layout(maxWidth: constraints.maxWidth);
+        final overflows = painter.didExceedMaxLines;
+        painter.dispose();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text.rich(
+              span,
+              maxLines: _expanded ? null : widget.maxLines,
+              overflow: _expanded ? TextOverflow.visible : TextOverflow.fade,
+            ),
+            if (overflows && !_expanded)
+              InkWell(
+                onTap: () => setState(() => _expanded = true),
+                borderRadius: BorderRadius.circular(6),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Text(
+                    'عرض المزيد',
+                    style: base.copyWith(
+                      color: scheme.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+extension<T> on T {
+  T also(void Function(T) f) {
+    f(this);
+    return this;
   }
 }

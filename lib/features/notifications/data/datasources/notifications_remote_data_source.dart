@@ -1,4 +1,5 @@
 import 'package:itaaleem/core/network/api_endpoints.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:itaaleem/core/network/dio_client.dart';
 import 'package:itaaleem/features/notifications/data/models/app_notification_mapper.dart';
 import 'package:itaaleem/features/notifications/domain/entities/app_notification.dart';
@@ -58,9 +59,11 @@ class NotificationsRemoteDataSource {
       }
     }
 
+    final hidden = await _hidden();
     final items = (list is List ? list : const [])
         .whereType<Map>()
         .map((e) => appNotificationFromJson(Map<String, dynamic>.from(e)))
+        .where((n) => !hidden.contains(n.id))
         .toList();
 
     final metaMap = meta is Map ? meta : const {};
@@ -115,8 +118,36 @@ class NotificationsRemoteDataSource {
     }
   }
 
+  /// The API has no per-notification delete for students: the item is
+  /// marked read on the server and hidden on this device.
   Future<void> delete(String id) async {
-    await _dio.delete<dynamic>(ApiEndpoints.notification(id));
+    final prefs = await SharedPreferences.getInstance();
+    final hidden = prefs.getStringList(_hiddenKey) ?? const [];
+    // Bounded: the oldest hidden ids drop off long after they left page 1.
+    await prefs.setStringList(_hiddenKey, [
+      ...hidden
+          .where((h) => h != id)
+          .toList()
+          .reversed
+          .take(499)
+          .toList()
+          .reversed,
+      id,
+    ]);
+    try {
+      await markAsRead(id);
+    } catch (_) {}
+  }
+
+  static const _hiddenKey = 'notifications_hidden_v1';
+
+  static Future<Set<String>> _hidden() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return {...?prefs.getStringList(_hiddenKey)};
+    } catch (_) {
+      return const {};
+    }
   }
 
   static int? _int(Object? raw) =>

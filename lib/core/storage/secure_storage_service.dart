@@ -54,6 +54,40 @@ class SecureStorageService {
   Future<void> deleteStudentProfileJson() =>
       _storage.delete(key: _studentProfileKey);
 
+  // --- Session type + guardian ("ولي الأمر") session ---
+  // The guardian token lives under its own key so it is never attached to a
+  // student endpoint (and vice versa) — the two tokens are separate on the
+  // server too.
+  static const _sessionTypeKey = 'session_type';
+  static const _guardianTokenKey = 'guardian_token';
+  static const _guardianProfileKey = 'guardian_profile';
+
+  /// `"student"` or `"guardian"` — which kind of sign-in the stored session is.
+  Future<String?> readSessionType() => _storage.read(key: _sessionTypeKey);
+
+  Future<void> writeSessionType(String type) =>
+      _storage.write(key: _sessionTypeKey, value: type);
+
+  Future<void> deleteSessionType() => _storage.delete(key: _sessionTypeKey);
+
+  Future<String?> readGuardianToken() => _storage.read(key: _guardianTokenKey);
+
+  Future<void> writeGuardianToken(String token) =>
+      _storage.write(key: _guardianTokenKey, value: token);
+
+  Future<String?> readGuardianProfileJson() =>
+      _storage.read(key: _guardianProfileKey);
+
+  Future<void> writeGuardianProfileJson(String json) =>
+      _storage.write(key: _guardianProfileKey, value: json);
+
+  /// Clears the guardian session (token, cached profile, session type).
+  Future<void> clearGuardianSession() async {
+    await _storage.delete(key: _guardianTokenKey);
+    await _storage.delete(key: _guardianProfileKey);
+    await _storage.delete(key: _sessionTypeKey);
+  }
+
   Future<void> clearAll() => _storage.deleteAll();
 }
 

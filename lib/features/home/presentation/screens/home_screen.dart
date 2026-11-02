@@ -1,7 +1,10 @@
 import 'package:itaaleem/core/widgets/app_sheet.dart';
+import 'package:itaaleem/features/news/presentation/widgets/news_home_card.dart';
 import 'package:itaaleem/features/center/presentation/widgets/social_links_bar.dart';
 import 'package:itaaleem/features/home/presentation/providers/content_refresh.dart';
 import 'dart:async';
+import 'package:itaaleem/features/app_config/app_config_providers.dart';
+import 'package:itaaleem/features/app_config/in_app_web_screen.dart';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:itaaleem/app/router/app_router.dart';
@@ -20,6 +23,7 @@ import 'package:itaaleem/features/center/presentation/providers/center_providers
 import 'package:itaaleem/features/center/presentation/screens/center_search_screen.dart';
 import 'package:itaaleem/features/center/presentation/widgets/center_reviews_section.dart';
 import 'package:itaaleem/features/home/domain/entities/app_banner.dart';
+import 'package:itaaleem/features/live/presentation/widgets/live_home_card.dart';
 import 'package:itaaleem/features/home/presentation/providers/banners_provider.dart';
 import 'package:itaaleem/features/notifications/data/dummy_notifications.dart';
 import 'package:itaaleem/features/notifications/presentation/providers/notifications_providers.dart';
@@ -318,6 +322,7 @@ class _JoinedHome extends ConsumerWidget {
                     isDemo: isDemo,
                   ),
                 ),
+                if (!isDemo) const _HomeCardsSection(),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
                     AppSpacing.screenHorizontal,
@@ -369,6 +374,8 @@ class _JoinedHome extends ConsumerWidget {
                     ],
                   ),
                 ),
+                if (!isDemo) const NewsHomeCard(),
+                if (!isDemo) const LiveHomeCard(),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
                     AppSpacing.screenHorizontal,
@@ -636,14 +643,85 @@ class _BannersSection extends ConsumerWidget {
   }
 }
 
+/// `home_cards` from `GET /app-config` (already filtered for this
+/// platform), drawn with the banner widgets: cards with an image share one
+/// [_BannerCarousel]; the rest each get a [_StudyBanner].
+class _HomeCardsSection extends ConsumerWidget {
+  const _HomeCardsSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cards = ref.watch(currentAppConfigProvider).homeCards;
+    if (cards.isEmpty) return const SizedBox.shrink();
+    final withImage = [
+      for (var i = 0; i < cards.length; i++)
+        if (cards[i].imageUrl != null)
+          AppBanner(
+            id: -1 - i,
+            imageUrl: cards[i].imageUrl!,
+            title: cards[i].title,
+            linkUrl: cards[i].url,
+          ),
+    ];
+    final byUrl = {for (final c in cards) c.url: c};
+    void open(String? url, String? title) {
+      if (url == null) return;
+      openConfigLink(context, url, title: title, type: byUrl[url]?.type);
+    }
+
+    Widget padded(Widget child) => Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenHorizontal,
+        AppSpacing.sectionSpacing,
+        AppSpacing.screenHorizontal,
+        0,
+      ),
+      child: child,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (withImage.isNotEmpty)
+          padded(
+            _BannerCarousel(
+              banners: withImage,
+              onStartTap: () {},
+              onOpen: (banner) => open(banner.linkUrl, banner.title),
+            ),
+          ),
+        for (final card in cards)
+          if (card.imageUrl == null)
+            padded(
+              _StudyBanner(
+                onStartTap: card.url == null
+                    ? null
+                    : () => open(card.url, card.title),
+                title: card.title,
+                subtitle: card.subtitle ?? '',
+                buttonLabel: card.buttonLabel ?? 'افتح',
+              ),
+            ),
+      ],
+    );
+  }
+}
+
 /// Horizontal auto-scrolling carousel (every 5 seconds, wraps around) with a
 /// dots indicator below — each page shows the banner's image with its title
 /// overlaid, and opens [AppBanner.linkUrl] on tap when it has one.
 class _BannerCarousel extends StatefulWidget {
-  const _BannerCarousel({required this.banners, required this.onStartTap});
+  const _BannerCarousel({
+    required this.banners,
+    required this.onStartTap,
+    this.onOpen,
+  });
 
   final List<AppBanner> banners;
   final VoidCallback onStartTap;
+
+  /// Replaces the default "open [AppBanner.linkUrl] outside the app".
+  final ValueChanged<AppBanner>? onOpen;
 
   @override
   State<_BannerCarousel> createState() => _BannerCarouselState();
@@ -697,7 +775,9 @@ class _BannerCarouselState extends State<_BannerCarousel> {
               itemBuilder: (context, index) {
                 final banner = widget.banners[index];
                 return GestureDetector(
-                  onTap: () => _openLink(banner.linkUrl),
+                  onTap: () => widget.onOpen != null
+                      ? widget.onOpen!(banner)
+                      : _openLink(banner.linkUrl),
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
@@ -782,9 +862,18 @@ class _BannerCarouselState extends State<_BannerCarousel> {
 }
 
 class _StudyBanner extends StatelessWidget {
-  const _StudyBanner({required this.onStartTap});
+  const _StudyBanner({
+    required this.onStartTap,
+    this.title = 'ابدأ مذاكرتك النهارده 🚀',
+    this.subtitle = 'تابع محاضراتك وراجع موادك بسهولة',
+    this.buttonLabel = 'ابدأ الآن',
+  });
 
-  final VoidCallback onStartTap;
+  /// `null` hides the button (a `home_cards` entry with `action: null`).
+  final VoidCallback? onStartTap;
+  final String title;
+  final String subtitle;
+  final String buttonLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -802,7 +891,7 @@ class _StudyBanner extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'ابدأ مذاكرتك النهارده 🚀',
+                        title,
                         style: TextStyle(
                           fontFamily: 'Cairo',
                           fontSize: 18,
@@ -811,41 +900,45 @@ class _StudyBanner extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: AppSpacing.xs),
-                      Text(
-                        'تابع محاضراتك وراجع موادك بسهولة',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: context.palette.onPrimary.withValues(
-                            alpha: 0.8,
-                          ),
+                      if (subtitle.isNotEmpty)
+                        Text(
+                          subtitle,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: context.palette.onPrimary.withValues(
+                                  alpha: 0.8,
+                                ),
+                              ),
                         ),
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: onStartTap,
-                          borderRadius: BorderRadius.circular(10),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: AppSpacing.base,
-                              vertical: AppSpacing.sm,
-                            ),
-                            decoration: BoxDecoration(
-                              color: context.palette.onPrimary,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              'ابدأ الآن',
-                              style: TextStyle(
-                                fontFamily: 'Cairo',
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: context.palette.primary,
+                      if (onStartTap != null) ...[
+                        const SizedBox(height: AppSpacing.md),
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: onStartTap,
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.base,
+                                vertical: AppSpacing.sm,
+                              ),
+                              decoration: BoxDecoration(
+                                color: context.palette.onPrimary,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                buttonLabel,
+                                style: TextStyle(
+                                  fontFamily: 'Cairo',
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: context.palette.primary,
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),

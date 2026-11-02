@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:itaaleem/app/router/app_router.dart';
 import 'package:itaaleem/features/settings/presentation/providers/settings_providers.dart';
 import 'package:flutter/material.dart';
@@ -8,16 +10,39 @@ import 'package:itaaleem/core/theme/app_palette.dart';
 import 'package:itaaleem/core/theme/app_spacing.dart';
 
 /// Shown in place of every screen except the login screen while
-/// `maintenance_mode` is true in `GET /public/settings`.
-class MaintenanceScreen extends ConsumerWidget {
+/// `maintenance.enabled` (`GET /app-config`) or `maintenance_mode`
+/// (`GET /public/settings`) is true. Re-checks every 30 seconds and on
+/// resume, so it lifts by itself once the server turns maintenance off.
+class MaintenanceScreen extends ConsumerStatefulWidget {
   const MaintenanceScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final message = ref
-        .watch(appSettingsProvider)
-        .valueOrNull
-        ?.maintenanceMessage;
+  ConsumerState<MaintenanceScreen> createState() => _MaintenanceScreenState();
+}
+
+class _MaintenanceScreenState extends ConsumerState<MaintenanceScreen> {
+  Timer? _poll;
+
+  @override
+  void initState() {
+    super.initState();
+    _poll = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => reloadAppSettings(ref),
+    );
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = ref.watch(appSettingsProvider).valueOrNull;
+    final title = settings?.maintenanceTitle;
+    final message = settings?.maintenanceMessage;
 
     return PopScope(
       canPop: false,
@@ -45,7 +70,9 @@ class MaintenanceScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 28),
                   Text(
-                    'التطبيق تحت الصيانة حالياً',
+                    (title != null && title.isNotEmpty)
+                        ? title
+                        : 'التطبيق تحت الصيانة حالياً',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       color: context.palette.onPrimary,
@@ -64,7 +91,7 @@ class MaintenanceScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 36),
                   OutlinedButton.icon(
-                    onPressed: () => ref.invalidate(appSettingsProvider),
+                    onPressed: () => reloadAppSettings(ref),
                     icon: Icon(
                       Icons.refresh_rounded,
                       color: context.palette.onPrimary,

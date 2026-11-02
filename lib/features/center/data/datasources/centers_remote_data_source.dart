@@ -1,4 +1,5 @@
 import 'package:itaaleem/core/network/api_endpoints.dart';
+import 'package:itaaleem/features/grade_change/grade_change_api.dart';
 import 'package:itaaleem/core/network/dio_client.dart';
 import 'package:itaaleem/features/center/data/models/center_json_mapper.dart';
 import 'package:itaaleem/features/center/domain/entities/center_model.dart';
@@ -54,11 +55,8 @@ class CentersRemoteDataSource {
         '>>> GET ${ApiEndpoints.centerDetails(id)} raw response: ${response.data}',
       );
     }
-    final data = response.data?['data'];
-    final body = data is Map<String, dynamic>
-        ? data
-        : (response.data ?? const <String, dynamic>{});
-    return centerModelFromJson(body);
+    // `{center: …}` (the live shape), `data` or the bare body.
+    return centerModelFromJson(_unwrapCenter(response.data));
   }
 
   /// `GET /center/support-info` — the raw center JSON for the student's
@@ -97,20 +95,48 @@ class CentersRemoteDataSource {
   /// `code`, not from an id in the URL. [gradeId] is omitted for centers
   /// with no grades to choose from. Throws [DioException] on failure — the
   /// caller decides how to surface it.
-  Future<void> joinCenter({required String code, int? gradeId}) async {
+  Future<CenterJoinResult> joinCenter({
+    required String code,
+    int? gradeId,
+  }) async {
     if (kDebugMode) {
       debugPrint(
         '>>> POST ${ApiEndpoints.centerJoin} code=$code grade_id=$gradeId',
       );
     }
-    await _dio.post<Map<String, dynamic>>(
+    final res = await _dio.post<Object?>(
       ApiEndpoints.centerJoin,
       data: {'code': code, if (gradeId != null) 'grade_id': gradeId},
     );
+    return CenterJoinResult.fromJson(res.data);
   }
 
   Future<void> leaveCenter() async {
     await _dio.post<Map<String, dynamic>>(ApiEndpoints.centersLeave);
+  }
+}
+
+/// What `POST /centers/join` says beyond success. Rejoining with a
+/// different grade (grade change on for the center) keeps the old grade and
+/// opens a pending grade-change [request] instead, with a [notice] for the
+/// student. Both are `null` for a plain join.
+class CenterJoinResult {
+  const CenterJoinResult({this.notice, this.request});
+
+  final String? notice;
+  final GradeChangeRequest? request;
+
+  /// Accepts the body directly or wrapped in `data`.
+  factory CenterJoinResult.fromJson(Object? raw) {
+    final json = raw is Map && raw['data'] is Map ? raw['data'] : raw;
+    if (json is! Map) return const CenterJoinResult();
+    final notice = json['notice'];
+    return CenterJoinResult(
+      notice: notice is String && notice.trim().isNotEmpty
+          ? notice.trim()
+          : null,
+      request: GradeChangeRequest.fromJson(json['grade_change_request']),
+    );
   }
 }
 

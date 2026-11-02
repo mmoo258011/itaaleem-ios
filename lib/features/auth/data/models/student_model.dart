@@ -19,6 +19,7 @@ class StudentModel extends Student {
     super.hasPaidAccess,
     super.role,
     super.mustChangePassword,
+    super.parentCode,
   });
 
   factory StudentModel.fromJson(Map<String, dynamic> json) {
@@ -86,6 +87,7 @@ class StudentModel extends Student {
       hasPaidAccess: _asBool(json['has_paid_access']),
       role: _role(json),
       mustChangePassword: _asBool(json['must_change_password']),
+      parentCode: _nonEmptyString(json['parent_code']),
     );
     if (kDebugMode) {
       debugPrint(
@@ -103,6 +105,12 @@ class StudentModel extends Student {
     if (role is String && role.isNotEmpty) return role.toLowerCase();
     if (_asBool(json['is_admin'])) return 'admin';
     return null;
+  }
+
+  static String? _nonEmptyString(Object? value) {
+    if (value is! String) return null;
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
   }
 
   static bool _asBool(Object? value) =>
@@ -148,6 +156,7 @@ class StudentModel extends Student {
     'has_paid_access': hasPaidAccess,
     if (role != null) 'role': role,
     'must_change_password': mustChangePassword,
+    if (parentCode != null) 'parent_code': parentCode,
   };
 }
 

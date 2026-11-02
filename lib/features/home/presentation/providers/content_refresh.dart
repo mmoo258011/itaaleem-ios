@@ -2,6 +2,11 @@ import 'package:itaaleem/features/subscriptions/presentation/providers/subscript
 import 'package:itaaleem/features/subscriptions/data/repositories/subscription_repository.dart';
 import 'dart:async';
 
+import 'package:itaaleem/features/center/presentation/providers/center_providers.dart';
+import 'package:itaaleem/features/update/presentation/providers/update_providers.dart';
+
+import 'package:itaaleem/features/settings/presentation/providers/settings_providers.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:itaaleem/features/auth/presentation/providers/auth_controller.dart';
 import 'package:itaaleem/features/home/presentation/providers/banners_provider.dart';
@@ -15,6 +20,7 @@ import 'package:itaaleem/features/assignments/presentation/providers/assignments
 /// refetches — lock state (`is_accessible`) lives in that data, so this is
 /// what makes a subscription activated from the dashboard show up.
 void invalidateContent(Ref ref) {
+  ref.invalidate(subjectsByTermProvider);
   ref.invalidate(subjectsListProvider);
   ref.invalidate(subjectDetailsProvider);
   ref.invalidate(homeLessonsProvider);
@@ -33,12 +39,20 @@ void invalidateContent(Ref ref) {
 /// all content, completing once the main lists have reloaded.
 Future<void> refreshAll(WidgetRef ref, {int? subjectId}) async {
   final profile = ref.read(authControllerProvider.notifier).refreshProfile();
+  // The center may have switched the current term.
+  ref.invalidate(subjectsByTermProvider);
   ref.invalidate(subjectsListProvider);
   ref.invalidate(subjectDetailsProvider);
   ref.invalidate(homeLessonsProvider);
   ref.invalidate(attachmentsProvider);
   ref.invalidate(lessonAttachmentsProvider);
   ref.invalidate(bannersProvider);
+  reloadAppSettings(ref);
+  if (ref.read(appVersionInfoProvider).hasError) {
+    ref.invalidate(appVersionInfoProvider);
+  }
+  final centerId = ref.read(centerMembershipProvider).valueOrNull?.centerId;
+  if (centerId != null) refreshCenter(ref, centerId);
   ref.invalidate(teachersProvider);
   ref.invalidate(notificationsControllerProvider);
   SubscriptionRepository.resetEndpointCheck();

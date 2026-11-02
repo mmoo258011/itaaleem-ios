@@ -33,6 +33,12 @@ final class ServerFailure extends Failure {
 
 const lockedForSubscribersMessage = 'هذا المحتوى متاح للمشتركين فقط';
 
+/// Whether [error] is a 404 — e.g. a subject whose term the center hid.
+bool isNotFoundError(Object error) {
+  final f = failureOf(error);
+  return f is ServerFailure && f.statusCode == 404;
+}
+
 /// Whether [error] is a 403 `{locked: true}`.
 bool isLockedContentError(Object error) {
   final f = failureOf(error);

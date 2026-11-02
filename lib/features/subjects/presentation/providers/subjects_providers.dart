@@ -2,15 +2,30 @@ import 'package:itaaleem/core/providers/cache_for.dart';
 import 'package:itaaleem/features/subjects/data/datasources/subjects_remote_data_source.dart';
 import 'package:itaaleem/features/subjects/domain/entities/subject.dart';
 import 'package:flutter/foundation.dart';
+import 'package:itaaleem/features/parent/data/parent_api.dart';
+import 'package:itaaleem/features/settings/presentation/providers/settings_providers.dart';
+import 'package:itaaleem/features/subjects/data/models/subject_json_mapper.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Real-data only — the demo ("دخول تجريبي") path never watches these,
 /// rendering [dummySubjects] directly instead (see [SubjectsScreen] and
 /// [SubjectDetailScreen]).
-final subjectsListProvider = FutureProvider.autoDispose<List<Subject>>((ref) {
-  return ref.cached(
+///
+/// With terms on, subjects that belong only to a non-current term are left
+/// out — so home, exams and assignments (all built on this list) follow the
+/// center's current term. Terms off or `/subjects-by-term` failing → the
+/// full list, exactly as before.
+final subjectsListProvider = FutureProvider.autoDispose<List<Subject>>((
+  ref,
+) async {
+  final all = await ref.cached(
     () => ref.read(subjectsRemoteDataSourceProvider).getSubjects(),
   );
+  final hidden = hiddenTermSubjectIds(
+    await ref.watch(subjectsByTermProvider.future),
+  );
+  if (hidden.isEmpty) return all;
+  return all.where((s) => !hidden.contains(s.id)).toList();
 });
 
 /// `GET /subjects/{id}` is meant to embed this subject's own `lessons`
@@ -114,3 +129,81 @@ final prefetchFirstSubjectProvider = Provider.autoDispose<void>((ref) {
 });
 
 const _prefetchCount = 3;
+
+/// One group of `GET /subjects-by-term`, in the server's order.
+class TermGroup {
+  const TermGroup({
+    required this.id,
+    required this.name,
+    required this.isCurrent,
+    required this.subjects,
+  });
+
+  /// `null` for the trailing "عام" group.
+  final int? id;
+  final String name;
+  final bool isCurrent;
+  final List<Subject> subjects;
+}
+
+/// The groups to show: the current term(s) plus the no-term "عام" group.
+/// When the server marks no term as current, every group stays (nothing is
+/// hidden on a guess).
+List<TermGroup> visibleTermGroups(List<TermGroup> terms) {
+  if (!terms.any((t) => t.isCurrent)) return terms;
+  return terms.where((t) => t.isCurrent || t.id == null).toList();
+}
+
+/// Ids of subjects found only in hidden (non-current) terms — a subject that
+/// also sits in a visible group stays.
+Set<int> hiddenTermSubjectIds(List<TermGroup>? terms) {
+  if (terms == null) return const {};
+  final visible = visibleTermGroups(terms);
+  final shown = {
+    for (final t in visible)
+      for (final s in t.subjects) s.id,
+  };
+  return {
+    for (final t in terms)
+      if (!visible.contains(t))
+        for (final s in t.subjects)
+          if (!shown.contains(s.id)) s.id,
+  };
+}
+
+/// Subjects grouped by term — only when `settings.terms_enabled`. `null`
+/// means "use the plain `GET /subjects` list": the switch is off, or the
+/// call failed in any way (403 for a center without terms included), with
+/// nothing shown to the student.
+final subjectsByTermProvider = FutureProvider.autoDispose<List<TermGroup>?>((
+  ref,
+) async {
+  bool enabled;
+  try {
+    enabled = (await ref.watch(appSettingsProvider.future)).termsEnabled;
+  } catch (_) {
+    enabled = false;
+  }
+  if (!enabled) return null;
+  return ref.cached(() async {
+    try {
+      final raw = await ref.read(studentExtrasApiProvider).getSubjectsByTerm();
+      return [
+        for (final t in raw)
+          TermGroup(
+            id: t['id'] is num ? (t['id'] as num).toInt() : null,
+            name: t['name'] is String ? t['name'] as String : '',
+            isCurrent: t['is_current'] == true,
+            subjects: [
+              for (final s
+                  in (t['subjects'] is List ? t['subjects'] as List : const []))
+                if (s is Map<String, dynamic>) subjectFromJson(s),
+            ],
+          ),
+      ];
+    } catch (e) {
+      if (kDebugMode) debugPrint('>>> subjects-by-term fallback: $e');
+      return null;
+    }
+  });
+});

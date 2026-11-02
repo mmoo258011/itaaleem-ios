@@ -133,10 +133,11 @@ class CenterMembershipController extends AsyncNotifier<CenterMembership?> {
   /// itself resolves the center from [centerCode] — the live backend's
   /// `POST /centers/join` route has no id in the URL and expects `{code,
   /// grade_id?}`. [gradeId] is omitted for centers with no grades to choose
-  /// from. Returns `null` on success, or the [Failure] to show if the API
-  /// call failed — the caller (e.g. select-grade screen) is responsible for
-  /// surfacing it.
-  Future<Failure?> join({
+  /// from. Returns `failure: null` on success, or the [Failure] to show if
+  /// the API call failed — the caller (e.g. select-grade screen) is
+  /// responsible for surfacing it. On success [CenterJoinResult.request] set
+  /// means the server kept the old grade and opened a grade-change request.
+  Future<({Failure? failure, CenterJoinResult result})> join({
     required int centerId,
     required String centerCode,
     int? gradeId,
@@ -152,13 +153,15 @@ class CenterMembershipController extends AsyncNotifier<CenterMembership?> {
         await prefs.remove(_gradeIdKey);
       }
       state = AsyncData(CenterMembership(centerId: centerId, gradeId: gradeId));
-      return null;
+      return (failure: null, result: const CenterJoinResult());
     }
 
     try {
-      await ref
+      final result = await ref
           .read(centersRemoteDataSourceProvider)
           .joinCenter(code: centerCode, gradeId: gradeId);
+      // Moved back to the old grade: [gradeId] was only requested.
+      if (result.request != null) gradeId = result.request!.fromGrade?.id;
       // Persisted immediately, independently of `/profile` — this is what
       // `build()` falls back to on a cold restart if that response's shape
       // isn't recognized as carrying a center/grade.
@@ -175,9 +178,9 @@ class CenterMembershipController extends AsyncNotifier<CenterMembership?> {
       // the profile is refreshed too so a now-active subscription unlocks
       // lessons without restarting the app.
       unawaited(ref.read(authControllerProvider.notifier).refreshProfile());
-      return null;
+      return (failure: null, result: result);
     } on DioException catch (e) {
-      return failureOf(e);
+      return (failure: failureOf(e), result: const CenterJoinResult());
     }
   }
 
@@ -232,9 +235,11 @@ class _CenterCache extends Notifier<Map<int, CenterModel>> {
   @override
   Map<int, CenterModel> build() => {};
 
-  void put(CenterModel center) {
-    state = {...state, center.id: center};
+  void put(int id, CenterModel center) {
+    state = {...state, id: center};
   }
+
+  bool has(int id) => state.containsKey(id);
 
   void remove(int id) {
     if (!state.containsKey(id)) return;
@@ -244,6 +249,26 @@ class _CenterCache extends Notifier<Map<int, CenterModel>> {
 
 final _centerCacheProvider =
     NotifierProvider<_CenterCache, Map<int, CenterModel>>(_CenterCache.new);
+
+/// The last good copy (from disk, or the one a pull-to-refresh replaces),
+/// shown by [centerByIdProvider] while a fetch runs or after it failed.
+final _centerStaleProvider =
+    NotifierProvider<_CenterCache, Map<int, CenterModel>>(_CenterCache.new);
+
+/// Waits between `GET /centers/{id}` attempts before giving up; a provider
+/// so tests can shorten them.
+final centerRetryDelaysProvider = Provider<List<Duration>>(
+  (ref) => const [
+    Duration(seconds: 2),
+    Duration(seconds: 5),
+    Duration(seconds: 10),
+  ],
+);
+
+String _centerPrefsKey(int id) => 'center_json_v1_$id';
+
+/// `ref.read` of a [Ref] or a [WidgetRef].
+typedef ProviderReader = T Function<T>(ProviderListenable<T> provider);
 
 /// Tracks the last error for a [centerByIdProvider] fetch that's currently
 /// failed, keyed by center id — lets dependent screens show a "تعذر
@@ -258,6 +283,10 @@ class _CenterFetchErrors extends Notifier<Map<int, Object>> {
   void clear(int id) {
     if (!state.containsKey(id)) return;
     state = {...state}..remove(id);
+  }
+
+  void clearAll() {
+    if (state.isNotEmpty) state = {};
   }
 }
 
@@ -279,11 +308,20 @@ void retryCenterFetch(WidgetRef ref, int id) {
   ref.read(_centerFetchErrorsProvider.notifier).clear(id);
 }
 
-/// Pull-to-refresh: drops the cached copy too, so [centerByIdProvider]
-/// fetches `GET /centers/{id}` again.
-void refreshCenter(WidgetRef ref, int id) {
-  ref.read(_centerFetchErrorsProvider.notifier).clear(id);
-  ref.read(_centerCacheProvider.notifier).remove(id);
+/// Every failed center fetch goes again — on reconnect and on resume.
+void retryFailedCenters(ProviderReader read) {
+  read(_centerFetchErrorsProvider.notifier).clearAll();
+}
+
+/// Pull-to-refresh: fetches `GET /centers/{id}` again, showing the current
+/// copy until the new one arrives.
+void refreshCenter(WidgetRef ref, int id) => refreshCenterWith(ref.read, id);
+
+void refreshCenterWith(ProviderReader read, int id) {
+  final current = read(_centerCacheProvider)[id];
+  if (current != null) read(_centerStaleProvider.notifier).put(id, current);
+  read(_centerFetchErrorsProvider.notifier).clear(id);
+  read(_centerCacheProvider.notifier).remove(id);
 }
 
 /// Sticky gate [AppRouter] redirects on: `true` once either (a) a 403 from
@@ -330,39 +368,80 @@ final centerByIdProvider = Provider.family<CenterModel?, int>((ref, id) {
   final cached = ref.watch(_centerCacheProvider.select((m) => m[id]));
   if (cached != null) return cached;
 
-  // A previous attempt already failed and hasn't been retried — don't
-  // keep re-firing the request every time something else causes this
-  // provider to rebuild; wait for [retryCenterFetch] to clear it.
+  final stale = ref.watch(_centerStaleProvider.select((m) => m[id]));
+
+  // A previous run (all its retries) failed and hasn't been retried — don't
+  // re-fire on every rebuild; [retryFailedCenters] / [retryCenterFetch] /
+  // [refreshCenter] clear it. The last good copy shows meanwhile.
   final hasError = ref.watch(
     _centerFetchErrorsProvider.select((errors) => errors.containsKey(id)),
   );
-  if (hasError) return null;
+  if (hasError) return stale;
 
   // Cache miss: fire the real fetch once and populate the cache when it
   // resolves, which re-runs this provider (it watches [_centerCacheProvider]
   // above) and returns the loaded center on the next read.
   // Rebuilds while the request is in flight must not fire a second one.
   final inFlight = ref.read(_centerFetchesInFlightProvider);
-  if (!inFlight.add(id)) return null;
-  final cacheNotifier = ref.read(_centerCacheProvider.notifier);
-  final errorsNotifier = ref.read(_centerFetchErrorsProvider.notifier);
-  ref
-      .read(centersRemoteDataSourceProvider)
-      .getCenterDetails(id)
-      .timeout(const Duration(seconds: 10))
-      .then((center) {
-        inFlight.remove(id);
-        cacheNotifier.put(center);
-      })
-      .catchError((Object error) {
-        inFlight.remove(id);
+  if (!inFlight.add(id)) return stale;
+  unawaited(
+    _fetchCenter(
+      id,
+      remote: ref.read(centersRemoteDataSourceProvider),
+      delays: ref.read(centerRetryDelaysProvider),
+      cache: ref.read(_centerCacheProvider.notifier),
+      stale: ref.read(_centerStaleProvider.notifier),
+      errors: ref.read(_centerFetchErrorsProvider.notifier),
+    ).whenComplete(() => inFlight.remove(id)),
+  );
+  return stale;
+});
+
+/// `GET /centers/{id}` with retries ([centerRetryDelaysProvider]); the disk
+/// copy is loaded first so something shows offline.
+Future<void> _fetchCenter(
+  int id, {
+  required CentersRemoteDataSource remote,
+  required List<Duration> delays,
+  required _CenterCache cache,
+  required _CenterCache stale,
+  required _CenterFetchErrors errors,
+}) async {
+  SharedPreferences? prefs;
+  try {
+    prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_centerPrefsKey(id));
+    if (raw != null && !stale.has(id)) {
+      stale.put(
+        id,
+        centerModelFromJson(jsonDecode(raw) as Map<String, dynamic>),
+      );
+    }
+  } catch (_) {}
+
+  for (var attempt = 0; ; attempt++) {
+    try {
+      final json = await remote
+          .getCenterDetailsJson(id)
+          .timeout(const Duration(seconds: 10));
+      final center = centerModelFromJson(json);
+      cache.put(id, center);
+      try {
+        await prefs?.setString(_centerPrefsKey(id), jsonEncode(json));
+      } catch (_) {}
+      return;
+    } catch (error) {
+      if (attempt >= delays.length) {
         if (kDebugMode) {
           debugPrint('[centerByIdProvider] GET /centers/$id failed: $error');
         }
-        errorsNotifier.setError(id, error);
-      });
-  return null;
-});
+        errors.setError(id, error);
+        return;
+      }
+      await Future<void>.delayed(delays[attempt]);
+    }
+  }
+}
 
 /// Ids with a `GET /centers/{id}` currently running (see [centerByIdProvider]).
 ///

@@ -7,6 +7,7 @@ import 'package:itaaleem/features/subjects/presentation/utils/protected_file_ope
 import 'package:itaaleem/core/design/design.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:itaaleem/app/router/app_router.dart' show subjectsPath;
 import 'package:itaaleem/core/error/failure.dart';
 import 'package:itaaleem/core/theme/app_radius.dart';
 import 'package:itaaleem/core/theme/app_spacing.dart';
@@ -26,7 +27,6 @@ import 'package:itaaleem/features/subjects/presentation/widgets/lesson_access.da
 import 'package:itaaleem/features/subjects/presentation/widgets/subject_detail/attachment_tile.dart';
 import 'package:itaaleem/features/subjects/presentation/widgets/subject_detail/lecture_tile.dart';
 import 'package:itaaleem/features/subjects/presentation/widgets/subject_detail/subject_access_card.dart';
-import 'package:itaaleem/features/settings/presentation/rate_app.dart';
 import 'package:itaaleem/features/subjects/presentation/widgets/subject_detail/subject_detail_header.dart';
 import 'package:itaaleem/features/subjects/presentation/widgets/subject_detail/subject_detail_skeleton.dart';
 import 'package:itaaleem/features/subjects/presentation/widgets/subject_detail/subject_progress_card.dart';
@@ -128,11 +128,29 @@ class _RealSubjectDetailState extends ConsumerState<_RealSubjectDetail> {
       error: (error, _) => Scaffold(
         appBar: AppBar(title: const Text('المادة')),
         body: AppBackground(
-          child: ErrorView(
-            message: failureOf(error).message,
-            retryLabel: 'إعادة المحاولة',
-            onRetry: () => ref.invalidate(subjectDetailsProvider(subjectId)),
-          ),
+          // 404: the subject left this student's view (its term was hidden,
+          // or the student moved course) — nothing to retry.
+          child: isNotFoundError(error)
+              ? AppEmptyState(
+                  icon: Icons.event_busy_outlined,
+                  title: 'المادة دي مش متاحة دلوقتي',
+                  subtitle: 'ممكن تكون في ترم تاني أو اتشالت من كورسك',
+                  action: FilledButton(
+                    onPressed: () {
+                      ref.invalidate(subjectsListProvider);
+                      context.canPop()
+                          ? context.pop()
+                          : context.go(subjectsPath);
+                    },
+                    child: const Text('رجوع للمواد'),
+                  ),
+                )
+              : ErrorView(
+                  message: failureOf(error).message,
+                  retryLabel: 'إعادة المحاولة',
+                  onRetry: () =>
+                      ref.invalidate(subjectDetailsProvider(subjectId)),
+                ),
         ),
       ),
       data: (subject) => _RealSubjectBody(subject: subject),
@@ -163,19 +181,6 @@ class _RealSubjectBody extends ConsumerWidget {
     // Whatever was watched there should show up here straight away.
     if (!context.mounted) return;
     ref.invalidate(subjectLessonsProgressProvider(_id));
-    try {
-      final progress = await ref.read(
-        subjectLessonsProgressProvider(_id).future,
-      );
-      if (!context.mounted) return;
-      final completed = SubjectProgressSummary.from(
-        subject.lessons,
-        progress,
-      ).completedIds;
-      await maybePromptRateApp(context, ref, completed);
-    } catch (_) {
-      // Progress unavailable — no prompt this time.
-    }
   }
 
   Future<void> _refresh(WidgetRef ref) async {

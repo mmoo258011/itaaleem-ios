@@ -13,11 +13,15 @@ class AppSettings {
     this.supportEmail,
     this.aboutText,
     this.maintenanceMode = false,
+    this.maintenanceTitle,
     this.maintenanceMessage,
     this.aiEnabled = false,
     this.sequentialMode = false,
     this.rateAppEnabled = false,
     this.rateAppUrl,
+    this.parentAccessEnabled = false,
+    this.termsEnabled = false,
+    this.liveEnabled = false,
   });
 
   final String? appName;
@@ -31,6 +35,7 @@ class AppSettings {
   final String? supportEmail;
   final String? aboutText;
   final bool maintenanceMode;
+  final String? maintenanceTitle;
   final String? maintenanceMessage;
 
   /// Whether "المساعد الذكي" (`POST /ai/ask`) is turned on server-side.
@@ -46,4 +51,16 @@ class AppSettings {
 
   /// `rate_app.url` — the store page (only ever `http(s)`).
   final String? rateAppUrl;
+
+  /// `settings.parent_access_enabled` — the global switch for "متابعة ولي
+  /// الأمر". Off when absent.
+  final bool parentAccessEnabled;
+
+  /// `settings.terms_enabled` — the global switch for grouping subjects by
+  /// term (`GET /subjects-by-term`). Off when absent.
+  final bool termsEnabled;
+
+  /// `settings.live_enabled` — the global switch for "البث المباشر". Off
+  /// when absent.
+  final bool liveEnabled;
 }

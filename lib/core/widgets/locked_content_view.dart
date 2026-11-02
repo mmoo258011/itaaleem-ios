@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:itaaleem/features/app_config/app_config_providers.dart'
+    show serverText;
 import 'package:itaaleem/core/error/failure.dart';
 import 'package:itaaleem/core/theme/app_spacing.dart';
 import 'package:itaaleem/core/utils/platform_utils.dart';
@@ -36,7 +38,9 @@ class LockedContentView extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.md),
             Text(
-              hide ? lockedContentMessage : lockedForSubscribersMessage,
+              hide
+                  ? serverText(context, 'locked_content', lockedContentMessage)
+                  : lockedForSubscribersMessage,
               textAlign: TextAlign.center,
               style: text.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),

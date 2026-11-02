@@ -1,5 +1,5 @@
 import 'package:itaaleem/core/device/device_identity_service.dart'
-    show appVersionString;
+    show appVersionParts;
 import 'package:itaaleem/core/error/error_messages.dart';
 import 'package:itaaleem/core/error/failure.dart';
 import 'package:itaaleem/core/network/api_endpoints.dart';
@@ -46,34 +46,38 @@ class AuthInterceptor extends Interceptor {
 /// header, regardless of whether a token happens to be stored.
 final skipAuthOptions = Options(extra: const {'skipAuth': true});
 
-/// Maps a [DioException] onto the app's [Failure] hierarchy and stashes the
-/// result on `error.error`, so callers can do:
-///
-/// ```dart
-/// on DioException catch (e) {
-///   final failure = e.error is Failure ? e.error as Failure : const UnknownFailure('...');
-/// }
-/// ```
-/// On a 429 waits the server's `retry_after` (body) / `Retry-After`
-/// (header) seconds — capped, 2s when absent — and retries the request
-/// once. A second 429 falls through to [ErrorMappingInterceptor], which
-/// shows the server's own message.
-/// `X-App-Version: {version}+{build}` and `X-Platform: android|ios` on
-/// every request.
+/// `X-Platform: android|ios`, `X-App-Version: {version}` and
+/// `X-App-Build: {build}` on every request — authenticated or not
+/// ([skipAuthOptions]) — so the server can answer each platform/build on its
+/// own (e.g. a per-platform `/public/app-version`).
 class AppVersionInterceptor extends Interceptor {
+  AppVersionInterceptor({
+    String Function()? platform,
+    Future<({String version, String build})> Function()? appVersion,
+  }) : _platform = platform ?? (() => platformHeaderValue),
+       _appVersion = appVersion ?? appVersionParts;
+
+  final String Function() _platform;
+  final Future<({String version, String build})> Function() _appVersion;
+
   @override
   Future<void> onRequest(
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
-    final version = await appVersionString();
+    final (:version, :build) = await _appVersion();
     if (version.isNotEmpty) options.headers['X-App-Version'] = version;
+    if (build.isNotEmpty) options.headers['X-App-Build'] = build;
     // Without it the server treats the device as iOS (no purchase UI).
-    options.headers['X-Platform'] = platformHeaderValue;
+    options.headers['X-Platform'] = _platform();
     handler.next(options);
   }
 }
 
+/// On a 429 waits the server's `retry_after` (body) / `Retry-After`
+/// (header) seconds — capped, 2s when absent — and retries the request
+/// once. A second 429 falls through to [ErrorMappingInterceptor], which
+/// shows the server's own message.
 class RateLimitRetryInterceptor extends Interceptor {
   RateLimitRetryInterceptor(this._dio);
 
@@ -122,6 +126,14 @@ class RateLimitRetryInterceptor extends Interceptor {
 const deviceLockFallbackMessage =
     'حسابك مسجّل على جهاز آخر. تواصل مع إدارة المركز لتغيير الجهاز.';
 
+/// Maps a [DioException] onto the app's [Failure] hierarchy and stashes the
+/// result on `error.error`, so callers can do:
+///
+/// ```dart
+/// on DioException catch (e) {
+///   final failure = e.error is Failure ? e.error as Failure : const UnknownFailure('...');
+/// }
+/// ```
 class ErrorMappingInterceptor extends Interceptor {
   ErrorMappingInterceptor(
     this._unauthorizedEvents,
@@ -162,7 +174,9 @@ class ErrorMappingInterceptor extends Interceptor {
     // server-side — a 401 there means "not an admin", not a dead session.
     if (failure is UnauthorizedFailure &&
         !_localOnlyUnauthorizedPaths.contains(err.requestOptions.path) &&
-        !_isAdminPath(err.requestOptions.path)) {
+        !_isAdminPath(err.requestOptions.path) &&
+        // app-config takes an optional token: its 401 never ends a session.
+        !err.requestOptions.path.startsWith('/app-config')) {
       _unauthorizedEvents.notify();
     }
     handler.next(err.copyWith(error: failure));
@@ -252,8 +266,13 @@ class ErrorMappingInterceptor extends Interceptor {
         final path = err.requestOptions.path;
         final isSubscriptionRelated =
             path.contains('subscription-requests') ||
-            path.contains('lectures/');
+            path.contains('lectures/') ||
+            path.contains('lessons/');
+        // A feature switched off (news channel, grade change: "غير متاحة")
+        // hides that feature only — never the whole center.
+        final isFeatureSwitch = _featureSwitchPaths.any(path.startsWith);
         if (!isSubscriptionRelated &&
+            !isFeatureSwitch &&
             !_isAdminPath(path) &&
             _looksLikeCenterDeactivated(message)) {
           _centerDeactivatedEvents.notify();
@@ -330,6 +349,8 @@ class ErrorMappingInterceptor extends Interceptor {
   /// ordinary permission 403 (e.g. "يجب الانضمام لسنتر أولاً" before
   /// joining) — matched loosely against the Arabic/English wording the
   /// backend uses for that specific case.
+  static const _featureSwitchPaths = ['/news', '/grade-change', '/app-config'];
+
   static bool _looksLikeCenterDeactivated(String message) {
     final lower = message.toLowerCase();
     return message.contains('غير متاح') || lower.contains('deactivat');

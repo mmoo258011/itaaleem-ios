@@ -69,8 +69,13 @@ Future<void> wipeAccountData(Ref ref) async {
   });
 
   // User-scoped providers that aren't autoDispose (the `ref.cached` ones
-  // already reload on a different student id).
-  ref
+  // already reload on a different student id). Through the container, not
+  // `ref`: [ref] is the auth controller's, and several of these watch it —
+  // `ref.invalidate` on a dependent trips Riverpod's debug-only circular
+  // dependency assert (CircularDependencyError), which escaped logout /
+  // forceLogout before they set the logged-out state. Release builds skip
+  // that assert; the container call behaves the same in both.
+  ref.container
     ..invalidate(notificationHistoryProvider)
     ..invalidate(chatControllerProvider)
     ..invalidate(channelMessagesProvider)

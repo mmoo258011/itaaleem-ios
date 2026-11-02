@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:itaaleem/app/router/app_router.dart';
 import 'package:itaaleem/core/widgets/app_button.dart';
 import 'package:itaaleem/core/widgets/app_toast.dart';
 import 'package:itaaleem/features/auth/presentation/providers/auth_controller.dart';
@@ -8,13 +7,13 @@ import 'package:itaaleem/features/center/domain/entities/center_model.dart';
 import 'package:itaaleem/features/center/presentation/providers/center_providers.dart';
 import 'package:itaaleem/features/center/presentation/screens/center_profile_screen.dart';
 import 'package:itaaleem/features/center/presentation/widgets/center_no_courses_state.dart';
+import 'package:itaaleem/features/grade_change/grade_change_screen.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:itaaleem/core/design/design.dart';
 import 'package:itaaleem/core/widgets/app_shimmer.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:itaaleem/core/theme/app_palette.dart';
 import 'package:itaaleem/core/theme/app_radius.dart';
 import 'package:itaaleem/core/theme/app_spacing.dart';
@@ -73,7 +72,7 @@ class _SelectGradeScreenState extends ConsumerState<SelectGradeScreen> {
     }
 
     try {
-      final failure = await ref
+      final (:failure, :result) = await ref
           .read(centerMembershipProvider.notifier)
           .join(
             centerId: widget.centerId,
@@ -96,8 +95,9 @@ class _SelectGradeScreenState extends ConsumerState<SelectGradeScreen> {
       }
 
       setState(() => _confirming = false);
-      AppToast.showSuccess(context, 'تم الانضمام لـ ${center.name} بنجاح 🎉');
-      context.go(homePath);
+      if (!goHomeAfterJoin(context, ref, result)) {
+        AppToast.showSuccess(context, 'تم الانضمام لـ ${center.name} بنجاح 🎉');
+      }
 
       // Best-effort, fired after navigating away and never awaited: keeps
       // the student's own profile (`authControllerProvider`) in sync with

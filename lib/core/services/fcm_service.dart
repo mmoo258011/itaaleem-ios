@@ -1,5 +1,9 @@
 import 'dart:convert';
 
+import 'package:itaaleem/features/grade_change/grade_change_screen.dart'
+    show gradeChangePath;
+import 'dart:async';
+import 'package:itaaleem/features/news/presentation/news_routes.dart';
 import 'package:itaaleem/app/router/app_router.dart';
 import 'package:itaaleem/core/device/device_identity_service.dart';
 import 'package:itaaleem/core/network/api_endpoints.dart';
@@ -12,6 +16,25 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:itaaleem/features/center_admin/presentation/center_admin_routes.dart';
+
+/// Lets the guardian ("ولي الأمر") session plug into push handling without
+/// this core service depending on that feature — set once from `App`.
+class GuardianPushHooks {
+  const GuardianPushHooks({
+    required this.isGuardianMode,
+    required this.sendToken,
+    required this.openChild,
+  });
+
+  /// Whether the signed-in session is a guardian one.
+  final bool Function() isGuardianMode;
+
+  /// `POST /parent/fcm-token`.
+  final Future<void> Function(String token) sendToken;
+
+  /// Opens a child's page (`data.student_id`).
+  final void Function(int studentId) openChild;
+}
 
 /// The interactive half of push notifications — permission + token
 /// registration, foreground display, and tap-to-navigate. Firebase itself
@@ -34,6 +57,18 @@ class FcmService {
   final DeviceIdentityService _deviceIdentityService;
 
   final _localNotifications = FlutterLocalNotificationsPlugin();
+
+  GuardianPushHooks? guardianHooks;
+
+  bool get _isGuardianMode => guardianHooks?.isGuardianMode() ?? false;
+
+  /// The channel the guardian pushes are sent on.
+  static const _guardianChannel = AndroidNotificationChannel(
+    'high_importance_channel',
+    'متابعة ولي الأمر',
+    description: 'نتائج الامتحانات ومتابعة دخول الطالب',
+    importance: Importance.high,
+  );
 
   static const _androidChannel = AndroidNotificationChannel(
     'fcm_default_channel',
@@ -76,6 +111,35 @@ class FcmService {
     if (!isConfigured) return;
     if (studentId != null) _studentId = studentId;
 
+    await _ensurePermissionAndRefreshListener();
+
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (kDebugMode) {
+        debugPrint('>>> FCM TOKEN: $token');
+      }
+      if (token != null) await _registerToken(token);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('>>> FCM getToken failed: $e');
+      }
+    }
+  }
+
+  /// Guardian session: same permission ask and refresh listener as [init],
+  /// but the token goes to `POST /parent/fcm-token` (via [guardianHooks]).
+  Future<void> initGuardian() async {
+    if (!isConfigured) return;
+    await _ensurePermissionAndRefreshListener();
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null) await _registerToken(token);
+    } catch (e) {
+      if (kDebugMode) debugPrint('>>> FCM guardian getToken failed: $e');
+    }
+  }
+
+  Future<void> _ensurePermissionAndRefreshListener() async {
     if (!_permissionAsked) {
       _permissionAsked = true;
       try {
@@ -92,21 +156,21 @@ class FcmService {
       }
       FirebaseMessaging.instance.onTokenRefresh.listen(_registerToken);
     }
-
-    try {
-      final token = await FirebaseMessaging.instance.getToken();
-      if (kDebugMode) {
-        debugPrint('>>> FCM TOKEN: $token');
-      }
-      if (token != null) await _registerToken(token);
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('>>> FCM getToken failed: $e');
-      }
-    }
   }
 
   Future<void> _registerToken(String token) async {
+    final hooks = guardianHooks;
+    if (hooks != null && hooks.isGuardianMode()) {
+      final key = 'guardian:$token';
+      if (key == _registeredKey) return;
+      try {
+        await hooks.sendToken(token);
+        _registeredKey = key;
+      } catch (e) {
+        if (kDebugMode) debugPrint('[FcmService] POST /parent/fcm-token: $e');
+      }
+      return;
+    }
     final studentId = _studentId;
     // Signed out (e.g. the refresh fired right after logout): the request would
     // just 401 — the next login sends the token inline and via init().
@@ -179,8 +243,15 @@ class FcmService {
           AndroidFlutterLocalNotificationsPlugin
         >()
         ?.createNotificationChannel(_androidChannel);
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.createNotificationChannel(_guardianChannel);
 
     FirebaseMessaging.onMessage.listen((message) {
+      final type = _pushKind(message.data);
+      if (type is String) _foregroundTypes.add(type);
       if (kDebugMode) {
         debugPrint(
           '>>> FCM onMessage: title=${message.notification?.title}, body=${message.notification?.body}',
@@ -205,7 +276,7 @@ class FcmService {
         id: _targetId(initialMessage.data),
       );
       // The session may already be up by the time this resolves.
-      if (_studentId != null) flushPendingNavigation();
+      if (_studentId != null || _isGuardianMode) flushPendingNavigation();
     }
   }
 
@@ -250,16 +321,38 @@ class FcmService {
       data['source'] == 'center_inbox' ||
           data['type'] == 'activation_code_redeemed'
       ? _centerInboxType
+      : _pushKind(data);
+
+  /// `content_type` refines a `general` push (e.g. `grade_change`, sent as
+  /// `general` so older app versions still list it).
+  static Object? _pushKind(Map<String, dynamic> data) =>
+      data['type'] == 'general' && data['content_type'] is String
+      ? data['content_type']
       : data['type'];
 
   static const _centerInboxType = '__center_inbox__';
 
+  static final _foregroundTypes = StreamController<String>.broadcast();
+
+  /// `data.type` of every push received while the app is open — lets a
+  /// screen refresh itself (e.g. the news red dot) without a pull.
+  static Stream<String> get foregroundTypes => _foregroundTypes.stream;
+
+  static bool _isGuardianType(Object? type) =>
+      type == 'parent_exam_result' || type == 'parent_student_inactive';
+
   static Object? _targetId(Map<String, dynamic> data) =>
-      data['id'] ??
-      data['lecture_id'] ??
-      data['exam_id'] ??
-      data['assignment_id'] ??
-      data['target_id'];
+      _isGuardianType(data['type'])
+      ? data['student_id']
+      : data['type'] == 'live_session'
+      ? data['live_session_id']
+      : data['type'] == 'news'
+      ? data['post_id']
+      : data['id'] ??
+            data['lecture_id'] ??
+            data['exam_id'] ??
+            data['assignment_id'] ??
+            data['target_id'];
 
   /// Routes a tapped push to the right screen: a lecture opens the internal
   /// video player, an exam opens its details/attempt screen, anything else
@@ -272,6 +365,15 @@ class FcmService {
         ? id.toInt()
         : int.tryParse(id?.toString() ?? '');
 
+    // A guardian push only opens in a guardian session, and a guardian
+    // session never opens a student screen — anything else is ignored.
+    if (_isGuardianType(type) || _isGuardianMode) {
+      if (_isGuardianType(type) && _isGuardianMode && parsedId != null) {
+        guardianHooks?.openChild(parsedId);
+      }
+      return;
+    }
+
     switch (type) {
       case _centerInboxType:
         context.push(centerAdminInboxPath);
@@ -279,31 +381,23 @@ class FcmService {
         context.push('/lectures/$parsedId');
       case 'exam' when parsedId != null:
         context.push('/exams/$parsedId');
+      case 'live_session' when parsedId != null:
+        context.push('/live-sessions/$parsedId');
+      case 'grade_change':
+        context.push(gradeChangePath);
+      case 'news':
+        // Opens the channel (on the post when known); the screen itself
+        // shows «القناة مش متاحة» if the channel was switched off since.
+        context.push(parsedId != null ? newsPostPath(parsedId) : newsPath);
       default:
         context.go(notificationsPath);
     }
   }
 
-  /// Logout: asks the server to forget this device's push token
-  /// (`DELETE /fcm-token`, best effort — an older server without it just
-  /// fails silently; `POST /logout` revokes the session anyway). Must run
-  /// while the auth token is still valid.
-  Future<void> unregisterFromServer() async {
-    if (_studentId == null && _registeredKey == null) return;
-    try {
-      final device = await _deviceIdentityService.getIdentity();
-      await _dio.delete<dynamic>(
-        ApiEndpoints.fcmToken,
-        data: device.toJson(),
-        options: Options(
-          sendTimeout: const Duration(seconds: 5),
-          receiveTimeout: const Duration(seconds: 5),
-        ),
-      );
-    } catch (e) {
-      if (kDebugMode) debugPrint('[FcmService] DELETE /fcm-token failed: $e');
-    }
-  }
+  /// Logout: the push token itself is deleted ([deleteLocalToken]) and
+  /// `POST /logout` revokes the session, so the server can't reach this
+  /// device any more — no separate `DELETE /fcm-token` call.
+  Future<void> unregisterFromServer() async {}
 
   /// Unregisters this device from FCM and forgets its local token — called
   /// on logout (see `AuthController`) so a signed-out device stops
