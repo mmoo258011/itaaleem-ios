@@ -1,3 +1,8 @@
+import 'package:itaaleem/core/utils/platform_utils.dart';
+import 'package:itaaleem/features/app_config/app_config.dart'
+    as app_config
+    show mentionsPurchase;
+
 /// One post of the news channel (`GET /news`). Parsing never throws: a field
 /// with the wrong shape is dropped, a post without an id is skipped.
 class NewsPost {
@@ -28,6 +33,11 @@ class NewsPost {
   final int viewsCount;
   final Map<String, int> reactions;
   final String? myReaction;
+
+  /// Body or link title mentions prices / subscribing / paying.
+  bool get mentionsPurchase =>
+      app_config.mentionsPurchase(body) ||
+      app_config.mentionsPurchase(link?.title ?? '');
 
   static NewsPost? fromJson(Map json) {
     final id = _int(json['id']);
@@ -209,7 +219,11 @@ class NewsPage {
 
   static const defaultReactions = ['👍', '❤️', '🎉', '👏', '😮'];
 
-  factory NewsPage.fromJson(Object? raw) {
+  /// [hidePurchase] (default: on iOS) drops posts whose body or link title
+  /// mentions prices / subscribing / paying — App Store rule, a second layer
+  /// next to the server's own filtering.
+  factory NewsPage.fromJson(Object? raw, {bool? hidePurchase}) {
+    final dropPurchase = hidePurchase ?? PlatformUtils.isIOS;
     final json = raw is Map ? raw : const {};
     final rawPosts = json['posts'];
     final pagination = json['pagination'];
@@ -221,7 +235,7 @@ class NewsPage {
         if (rawPosts is List)
           for (final e in rawPosts)
             if (e is Map) ?NewsPost.fromJson(e),
-      ],
+      ].where((p) => !dropPurchase || !p.mentionsPurchase).toList(),
       currentPage: current,
       lastPage: _int(p['last_page']) ?? current,
       reactionsAvailable: available is List

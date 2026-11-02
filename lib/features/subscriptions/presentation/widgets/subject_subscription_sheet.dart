@@ -18,7 +18,11 @@ Future<void> showSubjectSubscriptionSheet(
 }) {
   // iOS: no subscribe / renew — how to get access instead.
   if (PlatformUtils.hideSubscriptions) {
-    return showContactCenterAccessSheet(context);
+    return showContactCenterAccessSheet(
+      context,
+      message: lockedSubjectMessage,
+      showActivate: true,
+    );
   }
   return showModalBottomSheet<void>(
     context: context,

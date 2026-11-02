@@ -15,14 +15,22 @@ import 'package:itaaleem/core/widgets/app_empty_state.dart';
 import 'package:itaaleem/core/widgets/app_error_state.dart';
 import 'package:itaaleem/core/widgets/app_toast.dart';
 import 'package:itaaleem/features/center/data/datasources/centers_remote_data_source.dart';
+import 'package:itaaleem/core/utils/platform_utils.dart';
 import 'package:itaaleem/features/grade_change/grade_change_api.dart';
 import 'package:itaaleem/features/grade_change/grade_change_refresh.dart';
 
 const gradeChangePath = '/grade-change';
 
 /// Shown before sending — the one thing the student must know.
-const gradeChangeWarning =
+/// iOS never says "اشتراك" ([gradeChangeWarningIOS]).
+String get gradeChangeWarning => PlatformUtils.hideSubscriptions
+    ? gradeChangeWarningIOS
+    : gradeChangeWarningAndroid;
+
+const gradeChangeWarningAndroid =
     'بعد موافقة السنتر، اشتراكات وأكواد الكورس الحالي هتتقفل، وهتحتاج كود جديد أو تفعيل من السنتر للكورس الجديد';
+const gradeChangeWarningIOS =
+    'بعد موافقة السنتر، مواد وأكواد الكورس الحالي هتتقفل، وهتحتاج كود جديد أو تفعيل من السنتر للكورس الجديد';
 
 /// After a successful `POST /centers/join`: home, then — if the server kept
 /// the old grade and opened a grade-change request — that request's status
