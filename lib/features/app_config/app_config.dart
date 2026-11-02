@@ -260,12 +260,37 @@ const configIcons = <String, IconData>{
 
 /// App Store rule: nothing on iOS may mention prices, subscribing or paying.
 /// Used to drop such server-sent texts/items on iOS only.
+///
+/// Arabic words match as whole words only (with the usual و/ف/ب/ل/ال
+/// prefixes and a few suffixes), so «الدفعة» / «دفعات» / «مدفوع» /
+/// «سعرات» don't trigger it. Diacritics and tatweel are ignored, and
+/// أ/إ/آ count as ا.
+const _ar = r'[؀-ۿ]';
+const _pre = r'(?:و|ف)?(?:ب|ل|ال|بال|لل)?';
 final _purchaseWording = RegExp(
-  r'اشترك|اشتراك|ادفع|دفع|سعر|أسعار|اسعار|جنيه|ج\.م|شراء|اشتري|\$|EGP|price|subscri|pay|buy|purchase',
+  '(?<!$_ar)$_pre(?:'
+  // دفع، ادفع، الدفع، يدفع، للدفع، ادفعوا
+  r'(?:ا|ي|ت|ن)?دفع(?:وا|ي)?'
+  // اشترك، اشتركوا، يشترك، الاشتراك، اشتراكات، اشتراكك
+  r'|اشترك(?:وا|ي)?|(?:ي|ت|ن)شترك(?:وا|ي)?'
+  r'|اشتراك(?:ات|ك|كم|ها|ه|اتك|اتي)?'
+  // سعر، السعر، بسعر، اسعار، سعره
+  r'|سعر(?:ه|ها|هم|ك)?|اسعار(?:ه|ها|هم|ك|نا)?'
+  // جنيه، جنيهات، شراء، اشتري، يشتري
+  r'|جنيه(?:ات|ا)?|شراء|(?:ا|ي|ت|ن)شتري(?:ه|ها|وا)?'
+  ')(?!$_ar)'
+  r'|ج\s*\.\s*م'
+  r'|\$'
+  r'|\b(?:EGP|pay(?:s|ing|ment|ments)?|paid|buy(?:s|ing)?|price[sd]?|pricing'
+  r'|purchase\w*|subscri\w*)\b',
   caseSensitive: false,
 );
 
-bool mentionsPurchase(String text) => _purchaseWording.hasMatch(text);
+String _normalizeArabic(String text) =>
+    text.replaceAll(RegExp(r'[ً-ٰٟـ]'), '').replaceAll(RegExp('[أإآ]'), 'ا');
+
+bool mentionsPurchase(String text) =>
+    _purchaseWording.hasMatch(_normalizeArabic(text));
 
 const defaultConfigIcon = Icons.link_rounded;
 
