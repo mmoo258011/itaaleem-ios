@@ -32,16 +32,6 @@ abstract interface class CoursesRepository {
     required double progressPercentage,
   });
 
-  /// `POST /videos/{id}/progress` — reports playback progress; returns the
-  /// server's stored progress snapshot.
-  Future<Result<VideoProgress>> postVideoProgress(
-    int videoId, {
-    required int lastPositionSeconds,
-    required double watchPercentage,
-    required int totalWatchTimeSeconds,
-    required bool isCompleted,
-  });
-
   /// `POST /pdfs/{id}/progress` — reports how far into the PDF the student
   /// has read.
   Future<Result<void>> postPdfProgress(
@@ -57,12 +47,4 @@ abstract interface class CoursesRepository {
   /// creating a pending registration for admin approval. Returns the
   /// server's confirmation message.
   Future<Result<String>> requestEnrollment(int courseId);
-
-  /// `POST /api/student/lectures/{id}/track-view` — fire-and-forget ping
-  /// sent once a lecture's video successfully starts playing.
-  Future<Result<void>> trackLectureView(int lectureId);
-
-  /// `GET /api/student/courses/{id}/progress` — the course's up-to-date
-  /// completion percentage (0-100).
-  Future<Result<double>> getCourseProgress(int courseId);
 }

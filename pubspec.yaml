@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 3.1.0+51
+version: 3.2.0+52
 
 environment:
   sdk: ^3.10.4
@@ -45,6 +45,7 @@ dependencies:
     sdk: flutter
   webview_flutter: ^4.14.1
   webview_flutter_android: ^4.12.0
+  webview_flutter_wkwebview: ^3.25.1
   url_launcher: ^6.3.2
   image_picker: ^1.2.3
   youtube_explode_dart: ^3.1.0
@@ -76,6 +77,8 @@ dependencies:
   video_player: 2.9.2
   share_plus: ^13.3.1
   in_app_review: ^2.0.12
+  play_install_referrer: ^0.5.0
+  file_picker: ^13.3.3
 
 dev_dependencies:
   flutter_test:
@@ -134,6 +137,19 @@ flutter:
   # "family" key with the font family name, and a "fonts" key with a
   # list giving the asset and other descriptors for the font. For
   # example:
+  fonts:
+    # The smart UI's font (SIL OFL, assets/fonts/OFL.txt), entry screens.
+    - family: ReadexPro
+      fonts:
+        - asset: assets/fonts/ReadexPro-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/ReadexPro-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/ReadexPro-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/ReadexPro-Bold.ttf
+          weight: 700
+
   # fonts:
   #   - family: Schyler
   #     fonts:

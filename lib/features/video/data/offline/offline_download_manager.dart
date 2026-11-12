@@ -11,6 +11,7 @@ import 'package:itaaleem/core/utils/youtube_utils.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt_explode;
 import 'package:itaaleem/features/auth/presentation/providers/auth_controller.dart';
 import 'package:itaaleem/features/video/data/offline/encryption_manager.dart';
+import 'package:itaaleem/core/storage/backup_exclusion.dart';
 import 'package:itaaleem/features/video/data/offline/offline_database.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -145,6 +146,17 @@ class OfflineDownloadManager {
       _activeCancelTokens.remove(lessonId);
       _pausing.remove(lessonId);
     }
+  }
+
+  /// The lesson is already downloaded: its row is `completed` and the
+  /// encrypted file is on disk with the size recorded. A missing or short
+  /// file means it has to be downloaded again.
+  Future<bool> isFullyDownloaded(int lessonId) async {
+    final row = await _db.getByLessonId(lessonId);
+    if (row == null || row.downloadStatus != 'completed') return false;
+    final file = File(row.localPath);
+    if (!await file.exists()) return false;
+    return row.encryptedSize > 0 && await file.length() >= row.encryptedSize;
   }
 
   Future<void> resumeDownload(int lessonId) async {
@@ -596,8 +608,13 @@ class OfflineDownloadManager {
     final base = await getApplicationSupportDirectory();
     final dir = Directory(p.join(base.path, 'offline_videos'));
     if (!await dir.exists()) await dir.create(recursive: true);
+    if (!_backupExcluded) {
+      _backupExcluded = await excludeFromBackup(dir.path);
+    }
     return dir;
   }
+
+  bool _backupExcluded = false;
 
   Future<String> _filePathFor(int lessonId) async {
     final dir = await _offlineDir();

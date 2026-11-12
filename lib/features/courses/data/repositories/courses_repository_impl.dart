@@ -121,30 +121,6 @@ class CoursesRepositoryImpl implements CoursesRepository {
   }
 
   @override
-  Future<Result<VideoProgress>> postVideoProgress(
-    int videoId, {
-    required int lastPositionSeconds,
-    required double watchPercentage,
-    required int totalWatchTimeSeconds,
-    required bool isCompleted,
-  }) async {
-    try {
-      final progress = await _remoteDataSource.postVideoProgress(
-        videoId,
-        lastPositionSeconds: lastPositionSeconds,
-        watchPercentage: watchPercentage,
-        totalWatchTimeSeconds: totalWatchTimeSeconds,
-        isCompleted: isCompleted,
-      );
-      return Ok(progress);
-    } on DioException catch (e) {
-      return Err(_failureOf(e));
-    } catch (_) {
-      return const Err(UnknownFailure('حدث خطأ ما، حاول مرة أخرى'));
-    }
-  }
-
-  @override
   Future<Result<void>> postPdfProgress(
     int pdfId, {
     required int lastPage,
@@ -169,30 +145,6 @@ class CoursesRepositoryImpl implements CoursesRepository {
     try {
       final message = await _remoteDataSource.requestEnrollment(courseId);
       return Ok(message);
-    } on DioException catch (e) {
-      return Err(_failureOf(e));
-    } catch (_) {
-      return const Err(UnknownFailure('حدث خطأ ما، حاول مرة أخرى'));
-    }
-  }
-
-  @override
-  Future<Result<void>> trackLectureView(int lectureId) async {
-    try {
-      await _remoteDataSource.trackLectureView(lectureId);
-      return const Ok(null);
-    } on DioException catch (e) {
-      return Err(_failureOf(e));
-    } catch (_) {
-      return const Err(UnknownFailure('حدث خطأ ما، حاول مرة أخرى'));
-    }
-  }
-
-  @override
-  Future<Result<double>> getCourseProgress(int courseId) async {
-    try {
-      final progress = await _remoteDataSource.getCourseProgress(courseId);
-      return Ok(progress);
     } on DioException catch (e) {
       return Err(_failureOf(e));
     } catch (_) {

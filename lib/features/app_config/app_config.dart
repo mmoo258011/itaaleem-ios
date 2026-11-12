@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:itaaleem/core/utils/safe_url.dart';
 
 /// `GET /app-config` — everything the dashboard can change without a new
 /// build. Every field is optional; [AppConfig.empty] (a failed call, a 404
@@ -13,7 +14,9 @@ class AppConfig {
     this.links = const {},
     this.menuItems = const [],
     this.homeCards = const [],
+    this.menuLinks = const {},
     this.rating = const RatingConfig(),
+    this.panelHandoffEnabled = false,
   });
 
   static const empty = AppConfig();
@@ -33,10 +36,21 @@ class AppConfig {
   final List<ConfigItem> menuItems;
   final List<ConfigItem> homeCards;
 
+  /// `menu_links` — per role (`student`, `center_admin`), pages on our
+  /// domain the menu opens in a WebView, signed in by handoff when asked.
+  final Map<String, List<MenuLink>> menuLinks;
+
+  List<MenuLink> menuLinksFor(String role) => menuLinks[role] ?? const [];
+
   /// `rating` isn't sent by the server yet; the defaults apply until it is.
   final RatingConfig rating;
 
   bool? feature(String key) => features[key];
+
+  /// `panel_handoff_enabled` (top level, or under `features`): the web
+  /// panel's handoff sign-in is live on the server. Until then the center
+  /// admin's «لوحة التحكم» button is hidden.
+  final bool panelHandoffEnabled;
 
   String text(String key, String fallback) => texts[key] ?? fallback;
 
@@ -109,7 +123,11 @@ class AppConfig {
       links: links,
       menuItems: items(json['menu_items']),
       homeCards: items(json['home_cards'], requireLink: false),
+      menuLinks: MenuLink.parseAll(json['menu_links'], isIOS: isIOS),
       rating: RatingConfig.fromJson(json['rating']),
+      panelHandoffEnabled:
+          json['panel_handoff_enabled'] == true ||
+          features['panel_handoff_enabled'] == true,
     );
   }
 }
@@ -217,6 +235,67 @@ class ConfigItem {
           : null,
       order: _asInt(json['order']) ?? 0,
     );
+  }
+}
+
+/// One `menu_links.<role>[]` entry: `{title, icon, url, handoff}`.
+class MenuLink {
+  const MenuLink({
+    required this.title,
+    required this.url,
+    this.icon,
+    this.handoff = false,
+  });
+
+  /// Per role, so a long list can't crowd the menu.
+  static const maxPerRole = 8;
+  static const maxTitleLength = 40;
+  static const roles = {'student', 'center_admin'};
+
+  final String title;
+  final Uri url;
+  final String? icon;
+  final bool handoff;
+
+  /// `null` unless the title is short and non-empty and the URL is https on
+  /// our domain (or a subdomain), port 443, no user info.
+  static MenuLink? fromJson(Object? raw) {
+    if (raw is! Map) return null;
+    if (raw['enabled'] == false || raw['is_active'] == false) return null;
+    final title = _asNonEmpty(raw['title']);
+    final rawUrl = _asNonEmpty(raw['url']);
+    if (title == null || title.length > maxTitleLength || rawUrl == null) {
+      return null;
+    }
+    final url = rawUrl.length > 2048 ? null : Uri.tryParse(rawUrl);
+    if (url == null || !isInAppWebAllowed(url) || url.hasFragment) return null;
+    return MenuLink(
+      title: title,
+      url: url,
+      icon: _asNonEmpty(raw['icon']),
+      handoff: raw['handoff'] == true || raw['handoff'] == 1,
+    );
+  }
+
+  static Map<String, List<MenuLink>> parseAll(
+    Object? raw, {
+    required bool isIOS,
+  }) {
+    final out = <String, List<MenuLink>>{};
+    if (raw is! Map) return out;
+    for (final role in roles) {
+      final list = raw[role];
+      if (list is! List) continue;
+      final links = <MenuLink>[];
+      for (final e in list) {
+        final link = MenuLink.fromJson(e);
+        if (link == null || (isIOS && mentionsPurchase(link.title))) continue;
+        links.add(link);
+        if (links.length == maxPerRole) break;
+      }
+      if (links.isNotEmpty) out[role] = links;
+    }
+    return out;
   }
 }
 

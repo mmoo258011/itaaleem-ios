@@ -102,11 +102,7 @@ class CoursesRemoteDataSource {
     if (kDebugMode) {
       debugPrint('>>> GET /lectures/$id raw response: ${response.data}');
     }
-    final data = response.data?['data'];
-    final body = data is Map<String, dynamic>
-        ? data
-        : (response.data ?? const <String, dynamic>{});
-    return LectureDetailsModel.fromJson(body);
+    return LectureDetailsModel.fromJson(lectureBodyOf(response.data));
   }
 
   /// `GET /lectures/{id}/playback` — a signed streaming URL for the
@@ -303,35 +299,6 @@ class CoursesRemoteDataSource {
     }
   }
 
-  /// Reports playback progress for a video; the API stores whichever fields
-  /// are the furthest along (e.g. `last_position_seconds` never regresses).
-  Future<VideoProgress> postVideoProgress(
-    int videoId, {
-    required int lastPositionSeconds,
-    required double watchPercentage,
-    required int totalWatchTimeSeconds,
-    required bool isCompleted,
-  }) async {
-    final response = await _dio.post<Map<String, dynamic>>(
-      ApiEndpoints.videoProgress(videoId),
-      data: {
-        'last_position_seconds': lastPositionSeconds,
-        'watch_percentage': watchPercentage,
-        'total_watch_time_seconds': totalWatchTimeSeconds,
-        'is_completed': isCompleted,
-      },
-    );
-    final data = response.data?['data'];
-    return data is Map<String, dynamic>
-        ? VideoProgressModel.fromJson(data)
-        : VideoProgress(
-            lastPositionSeconds: lastPositionSeconds,
-            watchPercentage: watchPercentage,
-            totalWatchTimeSeconds: totalWatchTimeSeconds,
-            isCompleted: isCompleted,
-          );
-  }
-
   /// Reports reading progress for a PDF; fire-and-forget from the caller's
   /// perspective (the viewer already knows the current page locally).
   Future<void> postPdfProgress(
@@ -343,40 +310,6 @@ class CoursesRemoteDataSource {
       ApiEndpoints.pdfProgress(pdfId),
       data: {'last_page': lastPage, 'read_percentage': readPercentage},
     );
-  }
-
-  /// Fire-and-forget view ping — the caller doesn't need anything back, just
-  /// confirmation the request went out.
-  Future<void> trackLectureView(int lectureId) async {
-    if (kDebugMode) {
-      debugPrint('>>> POST ${ApiEndpoints.trackLectureView(lectureId)}');
-    }
-    await _dio.post<dynamic>(ApiEndpoints.trackLectureView(lectureId));
-  }
-
-  /// Server field name isn't confirmed yet — parsed defensively against the
-  /// same candidates [CourseDetailsModel] already tries for the embedded
-  /// `GET /courses/{id}` percentage, plus a couple of likely alternates for
-  /// this endpoint's own payload shape.
-  Future<double> getCourseProgress(int courseId) async {
-    final response = await _dio.get<Map<String, dynamic>>(
-      ApiEndpoints.courseProgress(courseId),
-    );
-    if (kDebugMode) {
-      debugPrint(
-        '>>> GET ${ApiEndpoints.courseProgress(courseId)} response: ${response.data}',
-      );
-    }
-    final data = response.data?['data'];
-    final body = data is Map<String, dynamic> ? data : response.data;
-    final value =
-        body?['progress_percentage'] ??
-        body?['progress_percent'] ??
-        body?['percentage'] ??
-        body?['progress'];
-    if (value is num) return value.toDouble();
-    if (value is String) return double.tryParse(value) ?? 0;
-    return 0;
   }
 
   /// Returns the API's `message` field so the UI can show the server's own
@@ -407,3 +340,14 @@ final coursesRemoteDataSourceProvider = Provider<CoursesRemoteDataSource>((
   final dio = ref.watch(dioClientProvider);
   return CoursesRemoteDataSource(dio);
 });
+
+/// The lecture object in a `GET /lessons/{id}` body, under `data`, `lesson`
+/// (subject lessons: `{lesson: {...}}`), both, or neither.
+Map<String, dynamic> lectureBodyOf(Map<String, dynamic>? raw) {
+  var body = raw ?? const <String, dynamic>{};
+  for (final key in const ['data', 'lesson']) {
+    final inner = body[key];
+    if (inner is Map<String, dynamic>) body = inner;
+  }
+  return body;
+}

@@ -7,6 +7,7 @@ import 'package:itaaleem/core/storage/secure_storage_service.dart';
 import 'package:itaaleem/core/utils/result.dart';
 import 'package:itaaleem/features/auth/data/account_data_wiper.dart';
 import 'package:itaaleem/features/auth/data/repositories/auth_repository_impl.dart';
+import 'package:itaaleem/features/auth/data/models/student_model.dart';
 import 'package:itaaleem/features/auth/domain/entities/student.dart';
 import 'package:itaaleem/features/auth/presentation/providers/auth_providers.dart';
 import 'package:itaaleem/features/auth/presentation/providers/signed_in_before_provider.dart';
@@ -47,6 +48,18 @@ class AuthController extends AsyncNotifier<Student?> {
   /// concurrently with the restore instead of in front of it.
   static const _restoreGracePeriod = Duration(milliseconds: 700);
 
+  /// Bumped on every state change. A profile fetch that started before a
+  /// newer change (e.g. the background revalidate, or a refresh from the
+  /// join, landing after «كمّل بياناتك» was saved) must not write its older
+  /// profile over it — that sent the student back to the completion screen.
+  int _generation = 0;
+
+  @override
+  set state(AsyncValue<Student?> newState) {
+    _generation++;
+    super.state = newState;
+  }
+
   @override
   Future<Student?> build() async {
     // Any real session (restored, logged in, registered) means this install
@@ -66,10 +79,13 @@ class AuthController extends AsyncNotifier<Student?> {
     final cached = await repository.cachedSession();
     final restoreFuture = repository.restoreSession();
     if (cached != null) {
+      final generation = _generation;
       unawaited(
         restoreFuture.then((fresh) {
-          // Unless the session changed meanwhile (logout / another login).
+          // Unless the session changed meanwhile (logout / another login,
+          // or a newer profile already applied).
           if (state.valueOrNull?.id != cached.id) return;
+          if (generation != _generation) return;
           // `null` = the token was rejected (401) and the session cleared.
           state = AsyncData(fresh);
         }, onError: (Object _) {}),
@@ -94,6 +110,7 @@ class AuthController extends AsyncNotifier<Student?> {
     required String passwordConfirmation,
     String? email,
     int? courseId,
+    Map<String, String> extras = const {},
   }) async {
     state = const AsyncLoading<Student?>().copyWithPrevious(state);
     final useCase = ref.read(registerUseCaseProvider);
@@ -104,6 +121,7 @@ class AuthController extends AsyncNotifier<Student?> {
       passwordConfirmation: passwordConfirmation,
       email: email,
       courseId: courseId,
+      extras: extras,
     );
     return _applyResult(result);
   }
@@ -180,11 +198,26 @@ class AuthController extends AsyncNotifier<Student?> {
   /// real profile to refresh.
   Future<void> refreshProfile() async {
     if (state.valueOrNull?.isDemo ?? false) return;
+    final generation = _generation;
     final useCase = ref.read(getProfileUseCaseProvider);
     final result = await useCase();
+    // Something newer was applied while this was in flight.
+    if (generation != _generation) return;
     if (result case Ok<Student>(:final value)) {
       state = AsyncData<Student?>(value);
     }
+  }
+
+  /// `POST /profile/complete` answered 200 with the saved `user` and the new
+  /// `profile_completion`: applied right away, so the router lets the
+  /// student through without waiting for (or depending on) another
+  /// `GET /profile`. The profile is then refreshed in the background.
+  Future<void> applyProfileCompletion(Map<String, dynamic> body) async {
+    final current = state.valueOrNull;
+    if (current is StudentModel) {
+      state = AsyncData<Student?>(mergeCompletionResponse(current, body));
+    }
+    await refreshProfile();
   }
 
   /// Updates the name/photo and, on success, refreshes the shared session

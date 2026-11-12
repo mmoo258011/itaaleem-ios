@@ -10,18 +10,25 @@ class AppTypography {
 
   static const String fontFamily = 'Cairo';
 
+  /// Bundled (assets/fonts): the smart UI's font, for the entry screens.
+  static const String smartFontFamily = 'ReadexPro';
+
   /// Monospace for codes / long numbers (system fallback chain).
   static const String monoFamily = 'monospace';
   static const List<String> monoFallback = ['JetBrains Mono', 'Courier'];
 
-  static TextTheme textTheme(Color onSurface, Color onSurfaceVariant) {
+  static TextTheme textTheme(
+    Color onSurface,
+    Color onSurfaceVariant, {
+    String family = fontFamily,
+  }) {
     TextStyle style(
       double size,
       FontWeight weight,
       double height, [
       Color? color,
     ]) => TextStyle(
-      fontFamily: fontFamily,
+      fontFamily: family,
       fontSize: size,
       fontWeight: weight,
       height: height,

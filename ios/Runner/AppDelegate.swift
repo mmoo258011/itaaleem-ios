@@ -38,6 +38,7 @@ import UserNotifications
     application.registerForRemoteNotifications()
     GeneratedPluginRegistrant.register(with: self)
     setUpScreenSecurity()
+    setUpStorage()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -123,6 +124,31 @@ import UserNotifications
       queue: .main
     ) { [weak self] _ in
       self?.screenSecurityChannel?.invokeMethod("onScreenshot", arguments: nil)
+    }
+  }
+
+  /// `excludeFromBackup(path)`: the downloaded lessons stay on this device
+  /// only — never in iCloud / iTunes backups (Android: data_extraction_rules).
+  private func setUpStorage() {
+    guard let registrar = self.registrar(forPlugin: "Storage") else { return }
+    let channel = FlutterMethodChannel(
+      name: "com.itaaleem.app/storage",
+      binaryMessenger: registrar.messenger()
+    )
+    channel.setMethodCallHandler { call, result in
+      guard call.method == "excludeFromBackup", let path = call.arguments as? String else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      var url = URL(fileURLWithPath: path, isDirectory: true)
+      var values = URLResourceValues()
+      values.isExcludedFromBackup = true
+      do {
+        try url.setResourceValues(values)
+        result(true)
+      } catch {
+        result(FlutterError(code: "exclude_failed", message: error.localizedDescription, details: nil))
+      }
     }
   }
 

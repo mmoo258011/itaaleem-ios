@@ -24,6 +24,22 @@ class AppTheme {
     ),
   );
 
+  /// The smart UI's identity for the screens every student sees before
+  /// the app knows their center (login, sign-up, join, complete profile):
+  /// #2440E6 / #FFC23D / #10183A / #F2F4FA and Readex Pro.
+  static ThemeData smartBrand(Brightness brightness) =>
+      brightness == Brightness.dark
+      ? _build(
+          AppColors.smartDarkScheme,
+          family: AppTypography.smartFontFamily,
+          background: AppColors.smartNavy,
+        )
+      : _build(
+          AppColors.smartLightScheme,
+          family: AppTypography.smartFontFamily,
+          background: AppColors.smartMist,
+        );
+
   static ThemeData dark({Color? centerColor}) => _build(
     AppColors.fromCenterColor(
       centerColor ?? AppColors.defaultPrimary,
@@ -36,11 +52,19 @@ class AppTheme {
   static List<BoxShadow> get shadowMd => AppShadows.md(Colors.black);
   static List<BoxShadow> get shadowLg => AppShadows.lg(Colors.black);
 
-  static ThemeData _build(ColorScheme s) {
+  static ThemeData _build(
+    ColorScheme s, {
+    String family = AppTypography.fontFamily,
+    Color? background,
+  }) {
     GoogleFonts.cairo();
     final isDark = s.brightness == Brightness.dark;
-    final background = AppColors.backgroundFor(s.brightness);
-    final text = AppTypography.textTheme(s.onSurface, s.onSurfaceVariant);
+    final pageBackground = background ?? AppColors.backgroundFor(s.brightness);
+    final text = AppTypography.textTheme(
+      s.onSurface,
+      s.onSurfaceVariant,
+      family: family,
+    );
     final hairline = s.outlineVariant.withValues(alpha: 0.5);
     final faintLine = s.outlineVariant.withValues(alpha: 0.3);
     final disabledFg = s.onSurface.withValues(alpha: 0.38);
@@ -54,7 +78,7 @@ class AppTheme {
 
     TextStyle cairo(double size, FontWeight weight, [Color? color]) =>
         TextStyle(
-          fontFamily: AppTypography.fontFamily,
+          fontFamily: family,
           fontSize: size,
           fontWeight: weight,
           letterSpacing: 0,
@@ -76,11 +100,11 @@ class AppTheme {
       useMaterial3: true,
       brightness: s.brightness,
       colorScheme: s,
-      fontFamily: AppTypography.fontFamily,
+      fontFamily: family,
       textTheme: text,
       primaryColor: s.primary,
-      scaffoldBackgroundColor: background,
-      canvasColor: background,
+      scaffoldBackgroundColor: pageBackground,
+      canvasColor: pageBackground,
       splashFactory: InkSparkle.splashFactory,
       iconTheme: IconThemeData(color: s.onSurface, size: 24),
       disabledColor: disabledFg,
@@ -92,7 +116,7 @@ class AppTheme {
         scrolledUnderElevation: 0.5,
         centerTitle: true,
         toolbarHeight: 60,
-        backgroundColor: background,
+        backgroundColor: pageBackground,
         foregroundColor: s.onSurface,
         surfaceTintColor: Colors.transparent,
         shadowColor: s.shadow.withValues(alpha: isDark ? 0.4 : 0.12),

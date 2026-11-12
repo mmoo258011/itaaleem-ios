@@ -1,22 +1,14 @@
-import 'dart:typed_data';
-
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:itaaleem/core/network/api_endpoints.dart';
-import 'package:itaaleem/core/network/dio_client.dart';
-import 'package:itaaleem/core/services/download_service.dart';
-import 'package:itaaleem/core/widgets/app_toast.dart';
 import 'package:itaaleem/core/widgets/error_view.dart';
 import 'package:itaaleem/features/courses/domain/entities/course_details.dart';
 import 'package:itaaleem/features/courses/presentation/providers/courses_providers.dart';
 import 'package:itaaleem/features/courses/presentation/widgets/course_details_shimmer.dart';
 import 'package:itaaleem/features/courses/presentation/widgets/course_progress_bar.dart';
 import 'package:itaaleem/features/courses/presentation/widgets/course_section_card.dart';
-import 'package:dio/dio.dart' as dio;
-import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
+import 'package:itaaleem/features/certificates/certificates.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:open_filex/open_filex.dart';
 import 'package:itaaleem/core/theme/app_palette.dart';
 import 'package:itaaleem/core/theme/app_radius.dart';
 import 'package:itaaleem/core/theme/app_spacing.dart';
@@ -143,13 +135,7 @@ class _DetailsBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    // `GET /api/student/courses/{id}/progress` is the fresher source (it
-    // reflects the track-view ping the lecture screen just sent); the
-    // embedded `details.progressPercent` from `GET /courses/{id}` is the
-    // fallback while that loads or if it fails.
-    final freshProgress = ref.watch(courseProgressPercentProvider(details.id));
-    final progressPercent =
-        freshProgress.valueOrNull ?? details.progressPercent;
+    final progressPercent = details.progressPercent;
 
     return Padding(
       padding: const EdgeInsetsDirectional.all(AppSpacing.screenHorizontal),
@@ -380,9 +366,7 @@ class _ExamAttemptedBadge extends StatelessWidget {
 }
 
 /// "تحميل الشهادة" — only rendered once [CourseDetails.progressPercent]
-/// hits 100. Downloads the PDF bytes straight into the app's private
-/// storage via [DownloadService] (same pattern as lecture attachments),
-/// then offers "فتح" through open_filex.
+/// hits 100. Opens "شهاداتي" (`GET /certificates`).
 class _CertificateButton extends ConsumerStatefulWidget {
   const _CertificateButton({required this.courseId});
 
@@ -400,37 +384,9 @@ class _CertificateButtonState extends ConsumerState<_CertificateButton> {
     setState(() => _downloading = true);
 
     try {
-      final client = ref.read(dioClientProvider);
-      final response = await client.get<List<int>>(
-        ApiEndpoints.courseCertificate(widget.courseId),
-        options: dio.Options(responseType: dio.ResponseType.bytes),
-      );
-      final bytes = response.data ?? const [];
-      if (bytes.isEmpty) throw StateError('empty response body');
-
-      final savedPath = await ref
-          .read(downloadServiceProvider)
-          .saveToDownloads(
-            fileName: 'شهادة-${widget.courseId}.pdf',
-            mimeType: 'application/pdf',
-            bytes: Uint8List.fromList(bytes),
-          );
-      if (!mounted) return;
-      if (savedPath != null) {
-        AppToast.showSuccess(
-          context,
-          'تم تحميل الشهادة',
-          actionLabel: 'فتح',
-          onAction: () => OpenFilex.open(savedPath),
-        );
-      } else {
-        AppToast.showError(context, 'تعذر حفظ الشهادة على الجهاز');
-      }
-    } catch (e, stackTrace) {
-      if (kDebugMode) {
-        debugPrint('[CertificateButton] download failed: $e\n$stackTrace');
-      }
-      if (mounted) AppToast.showError(context, 'تعذر تحميل الشهادة');
+      // `GET /certificates` (our API) — the old per-course
+      // `/api/student/courses/{id}/certificate` doesn't exist here.
+      await showCertificatesSheet(context, ref);
     } finally {
       if (mounted) setState(() => _downloading = false);
     }

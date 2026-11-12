@@ -78,7 +78,9 @@ class AppInput extends StatelessWidget {
       textAlign: textAlign,
       inputFormatters: inputFormatters,
       style: TextStyle(
-        fontFamily: 'Cairo',
+        // The theme's font: Cairo app-wide, Readex Pro on the entry screens.
+        fontFamily:
+            Theme.of(context).textTheme.bodyLarge?.fontFamily ?? 'Cairo',
         fontSize: 15,
         color: context.palette.textPrimary,
       ).merge(style),
