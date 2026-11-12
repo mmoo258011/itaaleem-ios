@@ -8,6 +8,8 @@ import 'package:itaaleem/features/channel/presentation/providers/channel_provide
 import 'package:itaaleem/features/chat/presentation/providers/chat_providers.dart';
 import 'package:itaaleem/features/courses/presentation/providers/courses_providers.dart';
 import 'package:itaaleem/features/home/presentation/providers/home_subjects_provider.dart';
+import 'package:itaaleem/features/smart_ui/completion/link_referral.dart';
+import 'package:itaaleem/features/smart_ui/smart_ui_session.dart';
 import 'package:itaaleem/features/video/data/offline/offline_download_manager.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,6 +28,9 @@ const _devicePrefsKeys = {
   'install_first_run_done',
   'rate_prompt_completed_ids',
   'rate_prompt_shown',
+  linkReferralCheckedKey,
+  linkCenterCodeKey,
+  linkRefKey,
 };
 
 /// Logout / forced logout: removes every trace of the signed-in account
@@ -48,6 +53,7 @@ Future<void> wipeAccountData(Ref ref) async {
     }
   }
 
+  await step('smart UI session', clearSmartUiSession);
   await step(
     'offline videos',
     () => ref.read(offlineDownloadManagerProvider).deleteAllForLogout(),

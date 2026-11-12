@@ -11,6 +11,9 @@ import 'package:itaaleem/features/center/domain/entities/center_model.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:itaaleem/features/smart_ui/completion/complete_profile_screen.dart'
+    show profileCompletionApiProvider;
+import 'package:itaaleem/features/smart_ui/completion/signup_extras.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _centerIdKey = 'joined_center_id';
@@ -177,7 +180,12 @@ class CenterMembershipController extends AsyncNotifier<CenterMembership?> {
       // provider (subjects, lessons, banners, teachers — see `ref.cached`);
       // the profile is refreshed too so a now-active subscription unlocks
       // lessons without restarting the app.
-      unawaited(ref.read(authControllerProvider.notifier).refreshProfile());
+      // Sign-up details first (governorate…), so the refreshed profile
+      // only asks «كمّل بياناتك» for what the server still lacks.
+      unawaited(() async {
+        await flushSignupExtras(ref.read(profileCompletionApiProvider));
+        await ref.read(authControllerProvider.notifier).refreshProfile();
+      }());
       return (failure: null, result: result);
     } on DioException catch (e) {
       return (failure: failureOf(e), result: const CenterJoinResult());

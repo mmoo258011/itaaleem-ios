@@ -1,3 +1,5 @@
+import 'package:itaaleem/features/web_panel/web_handoff.dart';
+import 'package:itaaleem/features/web_panel/web_panel_screen.dart';
 import 'package:itaaleem/features/auth/presentation/screens/force_change_password_screen.dart';
 import 'package:itaaleem/features/grade_change/grade_change_screen.dart';
 import 'package:itaaleem/features/news/presentation/news_screen.dart';
@@ -33,6 +35,7 @@ import 'package:itaaleem/features/admin/presentation/screens/admin_subjects_scre
 import 'package:itaaleem/features/admin/presentation/screens/admin_subscriptions_screen.dart';
 import 'package:itaaleem/core/widgets/fullscreen_image_viewer.dart';
 import 'package:itaaleem/features/account/presentation/screens/about_screen.dart';
+import 'package:itaaleem/features/account/presentation/screens/app_info_screen.dart';
 import 'package:itaaleem/features/account/presentation/screens/support_screen.dart';
 import 'package:itaaleem/features/activation/presentation/screens/activation_screen.dart';
 import 'package:itaaleem/features/auth/presentation/providers/auth_controller.dart';
@@ -72,6 +75,9 @@ import 'package:itaaleem/features/onboarding/presentation/screens/onboarding_scr
 import 'package:itaaleem/features/onboarding/presentation/screens/permissions_onboarding_screen.dart';
 import 'package:itaaleem/features/settings/presentation/providers/settings_providers.dart';
 import 'package:itaaleem/features/settings/presentation/screens/maintenance_screen.dart';
+import 'package:itaaleem/features/smart_ui/completion/complete_profile_screen.dart';
+import 'package:itaaleem/features/smart_ui/smart_shell_screen.dart';
+import 'package:itaaleem/features/smart_ui/smart_shell_state.dart';
 import 'package:itaaleem/features/splash/presentation/providers/app_startup.dart';
 import 'package:itaaleem/features/splash/presentation/screens/splash_screen.dart';
 import 'package:itaaleem/features/subjects/presentation/screens/lesson_detail_screen.dart';
@@ -105,6 +111,13 @@ const registerPath = '/register';
 const forgotPasswordPath = '/forgot-password';
 const forceChangePasswordPath = '/change-password-required';
 const homePath = '/home';
+
+/// The smart UI (a WebView) — a smart-UI student's home instead of [homePath].
+const smartShellPath = '/smart';
+
+/// Governorate / two-part name the server needs after joining a smart-UI
+/// center (`profile_completion.required`).
+const completeProfilePath = '/complete-profile';
 const maintenancePath = '/maintenance';
 const notificationsPath = '/notifications';
 const forceUpdatePath = '/force-update';
@@ -125,6 +138,9 @@ const supportPath = '/support';
 const editProfilePath = '/edit-profile';
 const changePasswordPath = '/change-password';
 const aboutPath = '/about';
+
+/// «معلومات التطبيق» — the smart UI's `app_info`.
+const appInfoPath = '/app-info';
 const activationPath = '/activation';
 const lessonPdfPath = '/lesson-pdf';
 const lessonAttachmentsPath = '/lesson-attachments';
@@ -179,6 +195,10 @@ class _AppRefreshListenable extends ChangeNotifier {
       centerDeactivatedProvider,
       (previous, next) => notifyListeners(),
     );
+    ref.listen(opensSmartShellProvider, (previous, next) {
+      SmartShellHooks.active = next;
+      notifyListeners();
+    }, fireImmediately: true);
   }
 }
 
@@ -325,6 +345,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
       if (path == forceChangePasswordPath) return homePath;
 
+      // Same kind of gate for the smart UI's required details.
+      final mustComplete = authState.valueOrNull?.mustCompleteProfile ?? false;
+      if (mustComplete) {
+        return path == completeProfilePath ? null : completeProfilePath;
+      }
+      if (path == completeProfilePath) return homePath;
+
       // The joined center was deactivated server-side (flagged by a 403 on
       // any content endpoint, or the center's own `is_active: false`) —
       // force `/center-deactivated` until the student logs out, same as
@@ -348,6 +375,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // [HomeScreen] itself switches between the branded home and the
       // join-by-code view depending on [centerMembershipProvider], so
       // there's no forced confinement to a center-search route here.
+      // A smart-UI student's home is the smart UI; everything the app still
+      // shows natively (downloads, PDFs…) is pushed on top of it.
+      final smartShell = ref.read(opensSmartShellProvider);
+      if (smartShell &&
+          (path == homePath || isAuthRoute || path == splashPath)) {
+        return smartShellPath;
+      }
+      if (!smartShell && path == smartShellPath) return homePath;
+
       if (isAuthRoute || path == splashPath) return homePath;
 
       // Admin screens: hidden UI for everyone else, and a deep link or
@@ -367,6 +403,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: splashPath,
         pageBuilder: (context, state) =>
             buildPageWithTransition(state: state, child: const SplashScreen()),
+      ),
+      GoRoute(
+        path: completeProfilePath,
+        pageBuilder: (context, state) => buildPageWithTransition(
+          state: state,
+          child: const CompleteProfileScreen(),
+        ),
+      ),
+      GoRoute(
+        path: smartShellPath,
+        // No slide/fade: the splash and the shell's loading screen are the
+        // same picture, so the swap must not move anything.
+        pageBuilder: (context, state) => NoTransitionPage(
+          key: state.pageKey,
+          child: const SmartShellScreen(),
+        ),
       ),
       GoRoute(
         path: loginPath,
@@ -580,6 +632,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               courseTitle: navArgs.courseTitle,
               orderedLectures: navArgs.orderedLectures,
               currentIndex: navArgs.currentIndex,
+              videoOnly: navArgs.videoOnly,
             ),
           );
         },
@@ -798,6 +851,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           child: const CenterDashboardScreen(),
         ),
         routes: [
+          GoRoute(
+            path: 'panel',
+            pageBuilder: (context, state) => buildPageWithTransition(
+              state: state,
+              child: WebPanelScreen(
+                url: centerPanelUrl(),
+                title: 'لوحة التحكم',
+              ),
+            ),
+          ),
           GoRoute(
             path: 'students',
             pageBuilder: (context, state) => buildPageWithTransition(
@@ -1037,6 +1100,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ),
           ),
         ],
+      ),
+      GoRoute(
+        path: appInfoPath,
+        pageBuilder: (context, state) =>
+            buildPageWithTransition(state: state, child: const AppInfoScreen()),
       ),
       GoRoute(
         path: aboutPath,

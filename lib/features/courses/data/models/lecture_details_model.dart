@@ -17,7 +17,7 @@ class LectureDetailsModel extends LectureDetails {
   });
 
   factory LectureDetailsModel.fromJson(Map<String, dynamic> json) {
-    final rawVideos = (json['videos'] as List?) ?? const [];
+    final rawVideos = (json['videos'] as List?) ?? _singleVideoOf(json);
     final rawPdfs = (json['pdfs'] as List?) ?? const [];
     final rawAttachments = (json['attachments'] as List?) ?? const [];
     final teacherId = _teacherIdOf(json);
@@ -56,6 +56,22 @@ class LectureDetailsModel extends LectureDetails {
       teacherId: teacherId,
       isDownloadable: (json['is_downloadable'] as bool?) ?? false,
     );
+  }
+
+  /// `GET /lessons/{id}` (a subject lesson) has no `videos` array: its one
+  /// video sits on the lesson itself as `video_url` + `video_provider`.
+  static List<Map<String, dynamic>> _singleVideoOf(Map<String, dynamic> json) {
+    final url = json['video_url'];
+    if (url is! String || url.trim().isEmpty) return const [];
+    return [
+      {
+        'id': json['id'],
+        'provider': json['video_provider'] ?? json['provider'],
+        'provider_video_id': json['provider_video_id'],
+        'video_url': url,
+        'thumbnail': json['thumbnail'],
+      },
+    ];
   }
 
   /// Same defensive shape as [CourseLectureModel._teacherIdOf] — a bare

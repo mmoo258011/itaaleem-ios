@@ -14,6 +14,7 @@ class RegisterUseCase {
     required String passwordConfirmation,
     String? email,
     int? courseId,
+    Map<String, String> extras = const {},
   }) {
     return _repository.register(
       fullName: fullName,
@@ -22,6 +23,7 @@ class RegisterUseCase {
       passwordConfirmation: passwordConfirmation,
       email: email,
       courseId: courseId,
+      extras: extras,
     );
   }
 }

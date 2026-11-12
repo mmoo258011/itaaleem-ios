@@ -137,7 +137,6 @@ class ApiEndpoints {
   static String lectureProgress(int id) => '/lessons/$id/progress';
 
   // --- Videos ---
-  static String videoProgress(int id) => '/videos/$id/progress';
 
   // --- PDFs ---
   static String pdfProgress(int id) => '/pdfs/$id/progress';
@@ -210,34 +209,25 @@ class ApiEndpoints {
   static String lessonFileLink(int id) => '/lessons/$id/file-link';
   static String attachmentLink(int id) => '/attachments/$id/link';
 
+  // --- Smart UI ---
+  /// `POST /smart-ui/handoff` — a one-time `{ticket, url}` that signs the
+  /// student into the smart UI on the center's subdomain.
+  static const String smartUiHandoff = '/smart-ui/handoff';
+
+  /// `POST /web/handoff` `{url}` — a one-time `{ticket, url}` that signs the
+  /// user into a web page on `*.itaaleem.com` (the center panel, menu links).
+  static const String webHandoff = '/web/handoff';
+
+  /// `POST /profile/complete` — governorate, two-part name, optional parent
+  /// phone and referral code (`profile_completion` in `GET /profile`).
+  static const String profileComplete = '/profile/complete';
+
+  /// `GET /public/governorates` — `{key, name, city}` items, no token.
+  static const String publicGovernorates = '/public/governorates';
+
   // --- Banners ---
   /// `GET /banners` — the joined center's home-screen banners.
   static const String banners = '/banners';
-
-  // --- Student (separate `/api/student` namespace, outside `/api/v1`) ---
-  /// `origin` with no path — [baseUrl] is `<origin>/api/v1`, but every
-  /// endpoint below lives under `<origin>/api/student` instead, so they're
-  /// built as absolute URLs rather than paths relative to [baseUrl].
-  static String get _origin => Uri.parse(baseUrl).replace(path: '').toString();
-
-  /// `POST /api/student/ai-ask` — asks a question, optionally scoped to a
-  /// course.
-  static String get aiAsk => '$_origin/api/student/ai-ask';
-
-  /// `POST /api/student/lectures/{id}/track-view` — pinged once when a
-  /// lecture's video successfully starts playing.
-  static String trackLectureView(int lectureId) =>
-      '$_origin/api/student/lectures/$lectureId/track-view';
-
-  /// `GET /api/student/courses/{id}/certificate` — the completion
-  /// certificate PDF, only reachable once the course is 100% done.
-  static String courseCertificate(int courseId) =>
-      '$_origin/api/student/courses/$courseId/certificate';
-
-  /// `GET /api/student/courses/{id}/progress` — up-to-date completion
-  /// percentage for a course.
-  static String courseProgress(int courseId) =>
-      '$_origin/api/student/courses/$courseId/progress';
 
   // --- Channel ---
   // NOT LIVE: `GET /channel` 404s on the live backend (confirmed), and

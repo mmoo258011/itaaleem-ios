@@ -135,7 +135,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       fields: [
         const Text(
           'اكتب رقم هاتفك أو بريدك الإلكتروني وسنساعدك في استعادة حسابك.',
-          style: TextStyle(fontFamily: 'Cairo', fontSize: 14),
+          style: TextStyle(fontSize: 14),
         ),
         AppInput(
           label: 'رقم الهاتف أو البريد الإلكتروني',
@@ -163,12 +163,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                   color: context.palette.success,
                 ),
                 const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: Text(
-                    _success!,
-                    style: const TextStyle(fontFamily: 'Cairo'),
-                  ),
-                ),
+                Expanded(child: Text(_success!, style: const TextStyle())),
               ],
             ),
           if (_error != null)
@@ -181,16 +176,13 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
           if (_showContact) ...[
             const Text(
               'للاستعادة تواصل مع إدارة السنتر',
-              style: TextStyle(
-                fontFamily: 'Cairo',
-                fontWeight: FontWeight.w700,
-              ),
+              style: TextStyle(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: AppSpacing.md),
             if (whatsapp == null && phone == null)
               const Text(
                 'لا تتوفر أرقام تواصل حالياً، تواصل مع السنتر مباشرة.',
-                style: TextStyle(fontFamily: 'Cairo'),
+                style: TextStyle(),
               ),
             if (whatsapp != null)
               OutlinedButton.icon(

@@ -23,6 +23,7 @@ class AuthRemoteDataSource {
     required String passwordConfirmation,
     String? email,
     int? courseId,
+    Map<String, String> extras = const {},
   }) async {
     final device = await _deviceIdentityService.getIdentity();
     final response = await _dio.post<Map<String, dynamic>>(
@@ -38,6 +39,9 @@ class AuthRemoteDataSource {
         'password_confirmation': passwordConfirmation,
         if (email != null && email.isNotEmpty) 'email': email,
         if (courseId != null) 'course_id': courseId,
+        // Optional sign-up details (governorate, parent_phone,
+        // referral_code); an older server simply ignores them.
+        ...extras,
         ...device.toJson(),
       },
     );

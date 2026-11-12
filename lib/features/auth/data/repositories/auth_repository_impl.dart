@@ -25,6 +25,7 @@ class AuthRepositoryImpl implements AuthRepository {
     required String passwordConfirmation,
     String? email,
     int? courseId,
+    Map<String, String> extras = const {},
   }) async {
     try {
       final response = await _remoteDataSource.register(
@@ -34,6 +35,7 @@ class AuthRepositoryImpl implements AuthRepository {
         passwordConfirmation: passwordConfirmation,
         email: email,
         courseId: courseId,
+        extras: extras,
       );
       await _persistSession(response);
       return Ok(response.student);

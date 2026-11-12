@@ -65,7 +65,7 @@ class AboutScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'منصة تعليمية متكاملة لطلاب المعاهد والدبلومات الفنية',
+                    'منصة تعليمية لكل الطلبة: دروس وامتحانات ومذاكرة ذكية مع مدرسك',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontFamily: 'Cairo',

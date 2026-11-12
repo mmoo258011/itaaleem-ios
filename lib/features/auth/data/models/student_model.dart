@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:itaaleem/core/network/api_endpoints.dart';
 import 'package:itaaleem/features/auth/domain/entities/student.dart';
+import 'package:itaaleem/features/smart_ui/completion/profile_completion.dart';
+import 'package:itaaleem/features/smart_ui/smart_ui_access.dart';
 
 /// Maps the `user` JSON object (per APP_SPEC.md's `{success, message,
 /// data}` envelope) onto the [Student] domain entity.
@@ -20,6 +22,8 @@ class StudentModel extends Student {
     super.role,
     super.mustChangePassword,
     super.parentCode,
+    super.smartUi,
+    super.profileCompletion,
   });
 
   factory StudentModel.fromJson(Map<String, dynamic> json) {
@@ -88,6 +92,8 @@ class StudentModel extends Student {
       role: _role(json),
       mustChangePassword: _asBool(json['must_change_password']),
       parentCode: _nonEmptyString(json['parent_code']),
+      smartUi: SmartUiAccess.fromJson(json['smart_ui']),
+      profileCompletion: ProfileCompletion.fromJson(json['profile_completion']),
     );
     if (kDebugMode) {
       debugPrint(
@@ -129,7 +135,12 @@ class StudentModel extends Student {
         ? Map<String, dynamic>.from(data['user'] as Map)
         : data;
     // `center` (and `grade`) may sit beside `user` rather than inside it.
-    for (final key in const ['center', 'grade']) {
+    for (final key in const [
+      'center',
+      'grade',
+      'smart_ui',
+      'profile_completion',
+    ]) {
       if (body[key] is! Map && data[key] is Map) body[key] = data[key];
       if (body[key] is! Map && json[key] is Map) body[key] = json[key];
     }
@@ -157,6 +168,9 @@ class StudentModel extends Student {
     if (role != null) 'role': role,
     'must_change_password': mustChangePassword,
     if (parentCode != null) 'parent_code': parentCode,
+    if (smartUi != null) 'smart_ui': smartUi!.toJson(),
+    if (profileCompletion != null)
+      'profile_completion': profileCompletion!.toJson(),
   };
 }
 
@@ -183,4 +197,19 @@ class AuthResponseModel {
       }),
     );
   }
+}
+
+/// [current] with what `POST /profile/complete` returned: the new
+/// `profile_completion`, and the saved name when the server sends it.
+StudentModel mergeCompletionResponse(
+  StudentModel current,
+  Map<String, dynamic> body,
+) {
+  final json = current.toJson();
+  final user = body['user'];
+  if (user is Map && user['name'] is String) json['name'] = user['name'];
+  if (body['profile_completion'] is Map) {
+    json['profile_completion'] = body['profile_completion'];
+  }
+  return StudentModel.fromJson(json);
 }

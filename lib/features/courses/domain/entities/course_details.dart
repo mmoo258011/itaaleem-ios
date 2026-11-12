@@ -83,6 +83,7 @@ class LectureNavArgs {
     this.courseTitle,
     this.orderedLectures = const [],
     this.currentIndex = -1,
+    this.videoOnly = false,
   });
 
   final String? title;
@@ -91,6 +92,10 @@ class LectureNavArgs {
   final String? courseTitle;
   final List<CourseLecture> orderedLectures;
   final int currentIndex;
+
+  /// Opened from the smart UI (`play_video`): the video only — no tabs,
+  /// exams, attachments or notes (the smart UI shows those itself).
+  final bool videoOnly;
 }
 
 enum LectureType { video, pdf, other }

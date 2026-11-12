@@ -1,6 +1,15 @@
 # iOS release build (obfuscated)
 
-**Current version: 3.1.0 (51)** (from `pubspec.yaml`; `Info.plist` reads `FLUTTER_BUILD_NAME` / `FLUTTER_BUILD_NUMBER`). The build number must stay above the last uploaded iOS build (49).
+**Current version: 3.2.0 (52)** (from `pubspec.yaml`; `Info.plist` reads `FLUTTER_BUILD_NAME` / `FLUTTER_BUILD_NUMBER`). The build number must stay above the last uploaded iOS build (51).
+
+### الجديد في 3.2.0 (52)
+- الواجهة الذكية (WebView) للطالب، و«لوحة التحكم» لأدمن المركز (بتظهر بس لو السيرفر رجّع `panel_handoff_enabled`).
+- «تحديث» بيعيد نفس الصفحة في مكانها، ولينكات السوشيال بتاعة المدرس بتفتح بره التطبيق.
+- تحميل نفس الدرس مرتين بقى شغال (باج UNIQUE اتصلح).
+- الأمان: تسجيل الخروج بيمسح الـ cache والـ storage بتوع الـ WebView، والـ token بيتبعت لـ API بتاعنا بس، والملفات اللي بتتفتح من لينك بتفضل جوه الـ temp.
+- **iOS (Swift جديد):** فولدر الدروس المتحمّلة (`offline_videos`) واخد `isExcludedFromBackup` من خلال channel `com.itaaleem.app/storage` في `AppDelegate.swift`، عشان ميتعملوش backup على iCloud.
+- `PrivacyInfo.xcprivacy` اتحدّث بالبيانات الجديدة، وشاشة الإطلاق بقت بيضا (صور الـ Dark اتشالت).
+- مفيش أي دفع جوه التطبيق (`smartPaymentsEnabled = false`)، وفلتر الأسعار على iOS زي ما هو.
 
 ### الجديد في 3.1.0 (51)
 - قناة الأخبار (شاشة القناة، ألبوم صور، كارت في الرئيسية، إشعارات).
@@ -10,7 +19,7 @@
 - iOS: مفيش أي سعر أو «اشتراك» أو «ادفع» — شيت المادة المقفولة بقى «فعّل المادة» و«تواصل مع المركز» بس، وبوستات الأخبار اللي فيها سعر أو دفع مش بتظهر.
 - تحسين استرجاع التحميل بعد فشل الشبكة.
 
-`ios/` ما اتغيرش عن 3.0.2 (نفس الـ signing و Info.plist و GoogleService-Info و PrivacyInfo). الـ obfuscation شغال زي ما هو (الأمر تحت).
+`ios/` في 3.2.0: اتغيّر `AppDelegate.swift` و `PrivacyInfo.xcprivacy` وشاشة الإطلاق. الـ signing و `Info.plist` و `GoogleService-Info` زي ما هما. الـ obfuscation شغال زي ما هو (الأمر تحت).
 
 ## Command line (recommended)
 

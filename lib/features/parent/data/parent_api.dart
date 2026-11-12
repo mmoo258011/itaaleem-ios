@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:itaaleem/core/device/device_identity_service.dart';
 import 'package:itaaleem/core/network/api_endpoints.dart';
 import 'package:itaaleem/core/network/dio_client.dart'
-    show AppVersionInterceptor;
+    show AppVersionInterceptor, isOwnApiUri;
 import 'package:itaaleem/core/storage/secure_storage_service.dart';
 import 'package:itaaleem/features/parent/data/parent_models.dart';
 
@@ -93,7 +93,8 @@ Dio _plainDio(Future<String?> Function() readToken) {
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (options, handler) async {
-        final token = await readToken();
+        // Same rule as [AuthInterceptor]: only our own API gets the token.
+        final token = isOwnApiUri(options.uri) ? await readToken() : null;
         if (token != null && token.isNotEmpty) {
           options.headers['Authorization'] = 'Bearer $token';
         }

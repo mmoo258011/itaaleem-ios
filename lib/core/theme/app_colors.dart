@@ -254,4 +254,64 @@ class AppColors {
     end: Alignment.bottomRight,
     colors: [primarySurface, accentSurface],
   );
+
+  // --- Smart UI identity (entry screens: AppTheme.smartBrand) ---
+  static const smartBlue = Color(0xFF2440E6);
+  static const smartGold = Color(0xFFFFC23D);
+  static const smartNavy = Color(0xFF10183A);
+  static const smartMist = Color(0xFFF2F4FA);
+
+  static final ColorScheme smartLightScheme =
+      ColorScheme.fromSeed(
+        seedColor: smartBlue,
+        brightness: Brightness.light,
+      ).copyWith(
+        primary: smartBlue,
+        onPrimary: Colors.white,
+        primaryContainer: const Color(0xFFE3E8FF),
+        onPrimaryContainer: smartNavy,
+        secondary: const Color(0xFF1B2FB0),
+        onSecondary: Colors.white,
+        tertiary: smartGold,
+        onTertiary: smartNavy,
+        tertiaryContainer: const Color(0xFFFFF1CC),
+        onTertiaryContainer: smartNavy,
+        surface: Colors.white,
+        onSurface: smartNavy,
+        onSurfaceVariant: const Color(0xFF5A6385),
+        surfaceContainerLowest: Colors.white,
+        surfaceContainerLow: const Color(0xFFF7F8FC),
+        surfaceContainer: smartMist,
+        surfaceContainerHigh: const Color(0xFFE9ECF6),
+        surfaceContainerHighest: const Color(0xFFE1E5F2),
+        outline: const Color(0xFF8A92B2),
+        outlineVariant: const Color(0xFFD9DEEC),
+      );
+
+  static final ColorScheme smartDarkScheme =
+      ColorScheme.fromSeed(
+        seedColor: smartBlue,
+        brightness: Brightness.dark,
+      ).copyWith(
+        primary: const Color(0xFF7086FF),
+        onPrimary: Colors.white,
+        primaryContainer: const Color(0xFF22306E),
+        onPrimaryContainer: const Color(0xFFE3E8FF),
+        secondary: smartBlue,
+        onSecondary: Colors.white,
+        tertiary: smartGold,
+        onTertiary: smartNavy,
+        tertiaryContainer: const Color(0xFF4A3B12),
+        onTertiaryContainer: const Color(0xFFFFE7A8),
+        surface: const Color(0xFF18224A),
+        onSurface: smartMist,
+        onSurfaceVariant: const Color(0xFFAAB2D0),
+        surfaceContainerLowest: const Color(0xFF0C1330),
+        surfaceContainerLow: const Color(0xFF151E42),
+        surfaceContainer: const Color(0xFF1B2550),
+        surfaceContainerHigh: const Color(0xFF212C5A),
+        surfaceContainerHighest: const Color(0xFF283466),
+        outline: const Color(0xFF7A84AA),
+        outlineVariant: const Color(0xFF2E3A6B),
+      );
 }

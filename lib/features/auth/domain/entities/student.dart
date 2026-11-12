@@ -1,4 +1,6 @@
 import 'package:itaaleem/core/config/admin_config.dart';
+import 'package:itaaleem/features/smart_ui/completion/profile_completion.dart';
+import 'package:itaaleem/features/smart_ui/smart_ui_access.dart';
 
 /// Domain entity for the authenticated student — the shape presentation
 /// code works with, independent of the JSON wire format.
@@ -19,6 +21,8 @@ class Student {
     this.role,
     this.mustChangePassword = false,
     this.parentCode,
+    this.smartUi,
+    this.profileCompletion,
   });
 
   final int id;
@@ -30,6 +34,21 @@ class Student {
   /// `user.parent_code` — only sent when "متابعة ولي الأمر" is on for the
   /// student's center; `null` hides the parent-code card.
   final String? parentCode;
+
+  /// `smart_ui` from `GET /profile`; `null` keeps the native app.
+  final SmartUiAccess? smartUi;
+
+  /// `profile_completion` from `GET /profile`; `null` = nothing asked.
+  final ProfileCompletion? profileCompletion;
+
+  /// A smart-UI student the server still needs details from (governorate,
+  /// two-part name) before going on.
+  bool get mustCompleteProfile =>
+      !isDemo &&
+      isStudent &&
+      !isAdmin &&
+      (smartUi?.enabled ?? false) &&
+      (profileCompletion?.required ?? false);
 
   /// The user's `role` from `GET /profile` / `/login` (`"student"` for
   /// every regular account). `null` when the response didn't carry one —
@@ -96,6 +115,10 @@ class Student {
           role == 'center_admin' ||
           role == 'super_admin' ||
           AdminConfig.isAdmin(mobile));
+
+  /// Students only: staff and the demo session stay on the native app.
+  bool get opensSmartUi =>
+      !isDemo && isStudent && !isAdmin && (smartUi?.enabled ?? false);
 
   bool get isTeacher => role == 'teacher';
 

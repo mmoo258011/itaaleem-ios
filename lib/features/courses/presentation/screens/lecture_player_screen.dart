@@ -18,7 +18,6 @@ import 'package:itaaleem/features/auth/presentation/providers/auth_controller.da
 import 'package:itaaleem/features/courses/domain/entities/course_details.dart';
 import 'package:itaaleem/features/courses/domain/entities/lecture_details.dart';
 import 'package:itaaleem/features/courses/domain/usecases/post_lecture_progress_usecase.dart';
-import 'package:itaaleem/features/courses/domain/usecases/post_video_progress_usecase.dart';
 import 'package:itaaleem/features/courses/presentation/providers/courses_providers.dart';
 import 'package:itaaleem/features/courses/presentation/widgets/course_progress_bar.dart';
 import 'package:itaaleem/features/courses/presentation/widgets/identity_watermark.dart';
@@ -72,6 +71,7 @@ class LecturePlayerScreen extends ConsumerStatefulWidget {
     this.orderedLectures = const [],
     this.currentIndex = -1,
     this.forceOffline = false,
+    this.videoOnly = false,
   });
 
   final int lectureId;
@@ -95,6 +95,11 @@ class LecturePlayerScreen extends ConsumerStatefulWidget {
   /// `PrivateServerPlaybackResolver`).
   final bool forceOffline;
 
+  /// From the smart UI's `play_video`: just the video (title, progress,
+  /// the lesson's video list) — no tabs, exams, attachments, notes or
+  /// download; the smart UI shows those around it. The old UI never sets it.
+  final bool videoOnly;
+
   @override
   ConsumerState<LecturePlayerScreen> createState() =>
       _LecturePlayerScreenState();
@@ -107,12 +112,10 @@ class _LecturePlayerScreenState extends ConsumerState<LecturePlayerScreen>
   int? _selectedVideoId;
   Timer? _progressTimer;
   final _watchStopwatch = Stopwatch();
-  int _baseWatchTimeSeconds = 0;
   bool _resumeMessageShown = false;
   bool _subscribeSheetShown = false;
   bool _isFullscreen = false;
   final _videoBoxKey = GlobalKey();
-  bool _viewTracked = false;
   late final TabController _tabController;
 
   /// Phone layout of a lecture that has a PDF: الفيديو / المذكرة / الامتحانات /
@@ -123,7 +126,6 @@ class _LecturePlayerScreenState extends ConsumerState<LecturePlayerScreen>
   // grabbed eagerly in initState — a `late` field initializer isn't enough,
   // since it would only evaluate on first access, which could be inside
   // dispose() itself if the player closes before the first progress tick.
-  late final PostVideoProgressUseCase _postProgressUseCase;
   late final PostLectureProgressUseCase _postLectureProgressUseCase;
 
   /// A demo session never hits the playback/progress API — see
@@ -156,7 +158,6 @@ class _LecturePlayerScreenState extends ConsumerState<LecturePlayerScreen>
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _pdfTabController = TabController(length: 4, vsync: this);
-    _postProgressUseCase = ref.read(postVideoProgressUseCaseProvider);
     _postLectureProgressUseCase = ref.read(postLectureProgressUseCaseProvider);
     _isDemo = ref.read(authControllerProvider).valueOrNull?.isDemo ?? false;
   }
@@ -196,7 +197,6 @@ class _LecturePlayerScreenState extends ConsumerState<LecturePlayerScreen>
     // Reports immediately on pause rather than waiting for the next
     // 15-second tick — see [LecturePlaybackHandle.onPause].
     handle.onPause = _reportProgress;
-    _baseWatchTimeSeconds = video.progress?.totalWatchTimeSeconds ?? 0;
     _watchStopwatch
       ..reset()
       ..start();
@@ -205,23 +205,11 @@ class _LecturePlayerScreenState extends ConsumerState<LecturePlayerScreen>
       const Duration(seconds: 15),
       (_) => _reportProgress(),
     );
-    _trackViewOnce();
   }
 
-  /// Fire-and-forget "opened this lecture's video" ping — sent once per
-  /// screen visit (not once per video, if the lecture carries more than
-  /// one), so switching between a lecture's own videos doesn't spam it.
-  /// [TrackLectureViewUseCase] already maps failures to a [Result], so this
-  /// never throws — nothing here needs to await or react to the outcome.
-  void _trackViewOnce() {
-    if (_viewTracked) return;
-    _viewTracked = true;
-    ref.read(trackLectureViewUseCaseProvider)(widget.lectureId);
-  }
-
-  /// Reports progress twice: the older per-video endpoint (unchanged, still
-  /// what other parts of the app read back) plus the newer lecture-level
-  /// one the video player now also talks to. Skipped entirely in a demo
+  /// Reports progress to `POST /lessons/{id}/progress` (`watched_seconds`,
+  /// `total_seconds`) only — the old `/videos/{id}/progress` and
+  /// `/api/student/.../track-view` aren't on this API. Skipped entirely in a demo
   /// session — see [_isDemo]. While playing the offline copy
   /// ([_isPlayingOffline]), records to the local `OfflineVideos` row
   /// instead of the network — `OfflineLicenseChecker.syncPendingProgress`
@@ -248,14 +236,6 @@ class _LecturePlayerScreenState extends ConsumerState<LecturePlayerScreen>
       return;
     }
 
-    _postProgressUseCase(
-      video.id,
-      lastPositionSeconds: handle.position.inSeconds,
-      watchPercentage: handle.watchPercentage,
-      totalWatchTimeSeconds:
-          _baseWatchTimeSeconds + _watchStopwatch.elapsed.inSeconds,
-      isCompleted: handle.isCompleted,
-    );
     _postLectureProgressUseCase(
       widget.lectureId,
       positionSeconds: handle.position.inSeconds,
@@ -478,6 +458,23 @@ class _LecturePlayerScreenState extends ConsumerState<LecturePlayerScreen>
     // Fullscreen (video providers that support it) takes over the whole
     // remaining area — the tabs only make sense in the normal layout.
     if (_isFullscreen && video != null) return videoBox();
+
+    if (widget.videoOnly) {
+      return _VideosTab(
+        title: title,
+        description: null,
+        videos: details.videos,
+        selectedVideo: video,
+        videoBox: video != null ? videoBox() : null,
+        onSelectVideo: _selectVideo,
+        watchPercentage: video?.progress?.watchPercentage,
+        downloadButton: null,
+        previousLecture: null,
+        nextLecture: null,
+        onPrevious: () {},
+        onNext: () {},
+      );
+    }
 
     // Offline download only makes sense for a video actually served by our
     // own backend (LocalRangeServer only knows how to replay that kind) —

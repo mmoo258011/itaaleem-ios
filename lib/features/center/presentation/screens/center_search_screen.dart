@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:itaaleem/core/error/failure.dart';
 import 'package:itaaleem/core/theme/app_radius.dart';
-import 'package:itaaleem/core/widgets/app_button.dart';
 import 'package:itaaleem/core/widgets/app_card.dart';
 import 'package:itaaleem/core/widgets/app_input.dart';
 import 'package:itaaleem/features/auth/presentation/providers/auth_controller.dart';
@@ -11,10 +10,12 @@ import 'package:itaaleem/features/center/data/dummy/center_dummy_data.dart';
 import 'package:itaaleem/features/center/domain/entities/center_model.dart';
 import 'package:itaaleem/features/center/presentation/screens/center_profile_screen.dart';
 import 'package:itaaleem/features/center/presentation/utils/center_color.dart';
+import 'package:itaaleem/features/smart_ui/completion/link_referral.dart';
 import 'package:dio/dio.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:itaaleem/core/design/design.dart';
+import 'package:itaaleem/core/design/smart_brand_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:itaaleem/core/theme/app_palette.dart';
 import 'package:itaaleem/core/theme/app_spacing.dart';
@@ -57,6 +58,23 @@ class _CenterSearchBodyState extends ConsumerState<CenterSearchBody> {
   CenterModel? _foundCenter;
   bool _notFound = false;
   String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    // A center's link (Play referrer / copied code on iOS): fill the code in
+    // and look it up, once.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      if (ref.read(authControllerProvider).valueOrNull?.isDemo ?? false) {
+        return;
+      }
+      final code = await const LinkReferralStore().takeCenterCode(context);
+      if (!mounted || code == null || _codeController.text.isNotEmpty) return;
+      _codeController.text = code.toUpperCase();
+      unawaited(_searchByCode());
+    });
+  }
 
   @override
   void dispose() {
@@ -138,7 +156,16 @@ class _CenterSearchBodyState extends ConsumerState<CenterSearchBody> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => SmartBrandTheme(
+    child: Builder(
+      builder: (context) => ColoredBox(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        child: _buildBranded(context),
+      ),
+    ),
+  );
+
+  Widget _buildBranded(BuildContext context) {
     return SingleChildScrollView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.all(
@@ -147,40 +174,14 @@ class _CenterSearchBodyState extends ConsumerState<CenterSearchBody> {
       child: Column(
         children: [
           const SizedBox(height: AppSpacing.xl),
-          Reveal(
-            child: Container(
-              width: 96,
-              height: 96,
-              decoration: BoxDecoration(
-                gradient: DesignTokens.brandGradient(
-                  Theme.of(context).colorScheme,
-                ),
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: context.palette.primary.withValues(alpha: 0.35),
-                    blurRadius: 32,
-                    spreadRadius: -6,
-                    offset: const Offset(0, 12),
-                  ),
-                ],
-              ),
-              child: Icon(
-                Icons.vpn_key_rounded,
-                size: 44,
-                color: context.palette.onPrimary,
-              ),
-            ),
-          ),
+          const Reveal(child: BrandIconTile(icon: Icons.vpn_key_rounded)),
           const SizedBox(height: AppSpacing.xl),
-          const Text(
+          Text(
             'انضم لسنترك',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontFamily: 'Cairo',
-              fontSize: 24,
-              fontWeight: FontWeight.w800,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: AppSpacing.sm),
           Text(
@@ -193,8 +194,7 @@ class _CenterSearchBodyState extends ConsumerState<CenterSearchBody> {
           const SizedBox(height: AppSpacing.xl),
           Reveal(
             index: 2,
-            child: GlassCard(
-              radius: DesignTokens.radiusHero,
+            child: BrandCard(
               padding: const EdgeInsets.all(AppSpacing.lg),
               child: Column(
                 children: [
@@ -214,10 +214,10 @@ class _CenterSearchBodyState extends ConsumerState<CenterSearchBody> {
                     ),
                   ),
                   const SizedBox(height: AppSpacing.base),
-                  AppButton.primary(
-                    'بحث عن السنتر',
+                  GradientButton(
+                    label: 'بحث عن السنتر',
                     loading: _searching,
-                    onPressed: _searching ? null : _searchByCode,
+                    onPressed: _searching ? null : withTapSound(_searchByCode),
                   ),
                 ],
               ),
@@ -284,7 +284,6 @@ class _CenterResultCard extends StatelessWidget {
                     child: Text(
                       center.initial,
                       style: TextStyle(
-                        fontFamily: 'Cairo',
                         fontSize: 20,
                         fontWeight: FontWeight.w800,
                         color: context.palette.onPrimary,
@@ -301,7 +300,6 @@ class _CenterResultCard extends StatelessWidget {
                     Text(
                       center.name,
                       style: const TextStyle(
-                        fontFamily: 'Cairo',
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
                       ),
@@ -320,7 +318,6 @@ class _CenterResultCard extends StatelessWidget {
                         Text(
                           center.rating.toStringAsFixed(1),
                           style: TextStyle(
-                            fontFamily: 'Cairo',
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
                             color: context.palette.textSecondary,
@@ -376,7 +373,6 @@ class _CenterNotFoundCard extends StatelessWidget {
           Text(
             'مفيش سنتر بالكود ده',
             style: TextStyle(
-              fontFamily: 'Cairo',
               fontSize: 14,
               fontWeight: FontWeight.w700,
               color: context.palette.error,
@@ -417,7 +413,6 @@ class _CenterErrorCard extends StatelessWidget {
             message,
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontFamily: 'Cairo',
               fontSize: 13,
               fontWeight: FontWeight.w600,
               color: context.palette.error,

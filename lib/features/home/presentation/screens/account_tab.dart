@@ -12,7 +12,7 @@ import 'package:itaaleem/features/grade_change/grade_change_api.dart';
 import 'package:itaaleem/features/grade_change/grade_change_screen.dart'
     show gradeChangePath;
 import 'package:itaaleem/features/app_config/in_app_web_screen.dart';
-import 'package:itaaleem/core/providers/package_info_provider.dart';
+import 'package:itaaleem/features/web_panel/open_menu_link.dart';
 import 'package:itaaleem/features/center/data/models/center_json_mapper.dart';
 import 'package:itaaleem/features/settings/presentation/rate_app.dart';
 import 'package:itaaleem/features/parent/presentation/widgets/parent_code_card.dart';
@@ -33,6 +33,8 @@ import 'package:itaaleem/features/center/presentation/utils/leave_center_dialog.
 import 'package:itaaleem/features/center/presentation/widgets/social_links_bar.dart';
 import 'package:itaaleem/features/settings/presentation/providers/theme_mode_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:itaaleem/features/auth/presentation/widgets/delete_account_confirm.dart';
+import 'package:itaaleem/core/widgets/developer_credit.dart';
 import 'package:itaaleem/core/design/design.dart';
 import 'package:itaaleem/core/utils/platform_utils.dart';
 import 'package:flutter/services.dart';
@@ -65,8 +67,6 @@ class AccountTab extends ConsumerWidget {
     final gradeName = (center != null && membership != null)
         ? _gradeNameOf(center, membership.gradeId)
         : null;
-    final version =
-        ref.watch(packageInfoProvider).valueOrNull?.version ?? '1.0.0';
 
     final links = center != null && center.socialLinks.isNotEmpty
         ? center.socialLinks
@@ -76,7 +76,9 @@ class AccountTab extends ConsumerWidget {
     final centerLogo =
         center?.logo ?? ApiEndpoints.mediaUrl(student?.centerLogo);
     final rateEnabled = ref.watch(rateAppEnabledProvider);
-    final menuItems = ref.watch(currentAppConfigProvider).menuItems;
+    final config = ref.watch(currentAppConfigProvider);
+    final menuItems = config.menuItems;
+    final menuLinks = config.menuLinksFor('student');
     final gradeChange = ref.watch(gradeChangeAvailableProvider).valueOrNull;
     final hasCertificates =
         ref.watch(certificatesProvider).valueOrNull?.isNotEmpty ?? false;
@@ -250,7 +252,7 @@ class AccountTab extends ConsumerWidget {
                               icon: Icons.privacy_tip_outlined,
                               label: 'سياسة الخصوصية',
                               onTap: () =>
-                                  openConfigLink(context, _privacyLink(ref)),
+                                  openConfigLink(context, privacyLink(ref)),
                             ),
                             _MenuTile(
                               icon: Icons.info_outline_rounded,
@@ -262,7 +264,7 @@ class AccountTab extends ConsumerWidget {
                         ),
                         // `menu_items` from `GET /app-config`, under the
                         // built-in ones (already filtered for this platform).
-                        if (menuItems.isNotEmpty) ...[
+                        if (menuItems.isNotEmpty || menuLinks.isNotEmpty) ...[
                           const SizedBox(height: AppSpacing.lg),
                           _MenuCard(
                             children: [
@@ -277,24 +279,20 @@ class AccountTab extends ConsumerWidget {
                                     type: item.type,
                                   ),
                                 ),
+                              // `menu_links.student` (on our domain only).
+                              for (final link in menuLinks)
+                                _MenuTile(
+                                  icon: configIcon(link.icon),
+                                  label: link.title,
+                                  onTap: () => openMenuLink(context, link),
+                                ),
                             ],
                           ),
                         ],
                         const SizedBox(height: AppSpacing.xl),
                         const _LogoutButton(),
                         const SizedBox(height: AppSpacing.md),
-                        Center(
-                          child: Text(
-                            'منصة أونلاين v$version',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  fontSize: 11,
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                                ),
-                          ),
-                        ),
+                        const Center(child: DeveloperCredit()),
                       ],
                     ),
                   ),
@@ -311,7 +309,7 @@ class AccountTab extends ConsumerWidget {
 const _privacyUrl = 'https://api.itaaleem.com/privacy';
 
 /// `links.privacy` from `GET /app-config`, else the built-in page.
-String _privacyLink(WidgetRef ref) {
+String privacyLink(WidgetRef ref) {
   final config = ref.read(currentAppConfigProvider);
   return config.link('privacy', config.link('privacy_url', _privacyUrl));
 }
@@ -696,45 +694,13 @@ class _DeleteAccountTile extends ConsumerStatefulWidget {
 class _DeleteAccountTileState extends ConsumerState<_DeleteAccountTile> {
   bool _isDeleting = false;
 
-  Future<void> _confirmDelete() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('حذف الحساب'),
-        content: const Text(
-          'هل أنت متأكد من حذف حسابك؟ لا يمكن التراجع عن هذا الإجراء',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('إلغاء'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            style: TextButton.styleFrom(foregroundColor: context.palette.error),
-            child: const Text('حذف'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-
-    setState(() => _isDeleting = true);
-    final failure = await ref
-        .read(authControllerProvider.notifier)
-        .deleteAccount();
-    if (!mounted) return;
-    setState(() => _isDeleting = false);
-
-    if (failure != null) {
-      AppToast.showError(
-        context,
-        failure.message.isNotEmpty
-            ? failure.message
-            : 'تعذر حذف الحساب، حاول مرة أخرى',
-      );
-    }
-  }
+  Future<void> _confirmDelete() => confirmAndDeleteAccount(
+    context,
+    ref,
+    onBusy: (busy) {
+      if (mounted) setState(() => _isDeleting = busy);
+    },
+  );
 
   @override
   Widget build(BuildContext context) {

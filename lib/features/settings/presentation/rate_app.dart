@@ -5,14 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:in_app_review/in_app_review.dart';
 import 'package:itaaleem/app/router/app_router.dart';
-import 'package:itaaleem/core/theme/app_spacing.dart';
-import 'package:itaaleem/core/utils/platform_utils.dart';
 import 'package:itaaleem/core/widgets/app_toast.dart';
 import 'package:itaaleem/features/app_config/app_config.dart';
 import 'package:itaaleem/features/app_config/app_config_providers.dart';
 import 'package:itaaleem/features/auth/presentation/providers/auth_controller.dart';
-import 'package:itaaleem/features/center_admin/presentation/widgets/admin_common.dart';
 import 'package:itaaleem/features/rating/rating_policy.dart';
+import 'package:itaaleem/features/smart_ui/smart_ui_session.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// App Store id (the Play listing comes from the package name).
@@ -62,7 +60,8 @@ final ratingWatcherProvider = Provider<void>((ref) {
         context,
         config: ref.read(currentAppConfigProvider).rating,
         sessionAge: DateTime.now().difference(sessionStart),
-        busy: isBusyLocation(location),
+        // Inside the smart UI: a lesson, an exam or a game.
+        busy: isBusyLocation(location) || SmartShellHooks.busy.value,
       );
     } finally {
       asking = false;
@@ -76,9 +75,12 @@ final ratingWatcherProvider = Provider<void>((ref) {
     (_) => unawaited(check()),
   );
   final lifecycle = AppLifecycleListener(onResume: () => unawaited(check()));
+  // A good moment: a lesson finished, a game won (see SmartShellHooks).
+  SmartShellHooks.onPositiveMoment = () => unawaited(check());
   ref.onDispose(() {
     timer.cancel();
     lifecycle.dispose();
+    SmartShellHooks.onPositiveMoment = null;
   });
 });
 
@@ -113,69 +115,13 @@ Future<void> _maybePrompt(
   // Counted as shown up front: closing the sheet = «بعدين» (7 days).
   await prefs.setInt(_lastShownKey, now.millisecondsSinceEpoch);
 
-  if (PlatformUtils.isIOS) {
-    // Apple 5.6.1: no custom prompt — Apple decides whether to show its own.
-    try {
-      if (await InAppReview.instance.isAvailable()) {
-        await InAppReview.instance.requestReview();
-      }
-    } catch (_) {}
-    return;
-  }
-
-  if (!context.mounted) return;
-  final rate = await showModalBottomSheet<bool>(
-    context: context,
-    showDragHandle: true,
-    builder: (sheetContext) {
-      final text = Theme.of(sheetContext).textTheme;
-      final scheme = Theme.of(sheetContext).colorScheme;
-      return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.xl,
-            0,
-            AppSpacing.xl,
-            AppSpacing.xl,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Icon(Icons.star_rounded, size: 44, color: scheme.primary),
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                'عاجبك التطبيق؟ قيّمنا على جوجل بلاي ⭐',
-                textAlign: TextAlign.center,
-                style: text.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                'رأيك بيفرق معانا وبيساعد طلاب تانيين يلاقونا',
-                textAlign: TextAlign.center,
-                style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-              ),
-              const SizedBox(height: AppSpacing.base),
-              FilledButton(
-                onPressed: () => Navigator.of(sheetContext).pop(true),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(46),
-                ),
-                child: const Text('قيّم الآن'),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              TextButton(
-                onPressed: () => Navigator.of(sheetContext).pop(false),
-                child: const Text('بعدين'),
-              ),
-            ],
-          ),
-        ),
-      );
-    },
-  );
-  if (rate != true) return;
-  await prefs.setBool(_ratedKey, true);
-  await waitForRouteExit();
-  if (context.mounted) await openRateApp(context);
+  // The stores' own in-app review, on both platforms (no custom sheet:
+  // Apple 5.6.1, and Google wants no question before it). They decide
+  // whether it actually shows; «قيّم التطبيق» in «حسابي» opens the store
+  // page whenever the student wants.
+  try {
+    if (await InAppReview.instance.isAvailable()) {
+      await InAppReview.instance.requestReview();
+    }
+  } catch (_) {}
 }

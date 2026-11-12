@@ -9,16 +9,13 @@ import 'package:itaaleem/features/courses/domain/entities/lecture_details.dart';
 import 'package:itaaleem/features/courses/domain/usecases/get_available_courses_usecase.dart';
 import 'package:itaaleem/features/courses/domain/usecases/get_course_details_usecase.dart';
 import 'package:itaaleem/features/courses/domain/usecases/get_course_exams_usecase.dart';
-import 'package:itaaleem/features/courses/domain/usecases/get_course_progress_usecase.dart';
 import 'package:itaaleem/features/courses/domain/usecases/get_courses_usecase.dart';
 import 'package:itaaleem/features/courses/domain/usecases/get_lecture_details_usecase.dart';
 import 'package:itaaleem/features/courses/domain/usecases/get_lecture_playback_usecase.dart';
 import 'package:itaaleem/features/courses/domain/usecases/get_lecture_progress_usecase.dart';
 import 'package:itaaleem/features/courses/domain/usecases/post_lecture_progress_usecase.dart';
 import 'package:itaaleem/features/courses/domain/usecases/post_pdf_progress_usecase.dart';
-import 'package:itaaleem/features/courses/domain/usecases/post_video_progress_usecase.dart';
 import 'package:itaaleem/features/courses/domain/usecases/request_enrollment_usecase.dart';
-import 'package:itaaleem/features/courses/domain/usecases/track_lecture_view_usecase.dart';
 import 'package:itaaleem/features/teachers/domain/entities/teacher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -30,12 +27,6 @@ final getCourseDetailsUseCaseProvider = Provider<GetCourseDetailsUseCase>((
   ref,
 ) {
   return GetCourseDetailsUseCase(ref.watch(coursesRepositoryProvider));
-});
-
-final getCourseProgressUseCaseProvider = Provider<GetCourseProgressUseCase>((
-  ref,
-) {
-  return GetCourseProgressUseCase(ref.watch(coursesRepositoryProvider));
 });
 
 final getCourseExamsUseCaseProvider = Provider<GetCourseExamsUseCase>((ref) {
@@ -60,12 +51,6 @@ final getLectureDetailsUseCaseProvider = Provider<GetLectureDetailsUseCase>((
   return GetLectureDetailsUseCase(ref.watch(coursesRepositoryProvider));
 });
 
-final postVideoProgressUseCaseProvider = Provider<PostVideoProgressUseCase>((
-  ref,
-) {
-  return PostVideoProgressUseCase(ref.watch(coursesRepositoryProvider));
-});
-
 final getLecturePlaybackUseCaseProvider = Provider<GetLecturePlaybackUseCase>((
   ref,
 ) {
@@ -86,12 +71,6 @@ final postLectureProgressUseCaseProvider = Provider<PostLectureProgressUseCase>(
 
 final postPdfProgressUseCaseProvider = Provider<PostPdfProgressUseCase>((ref) {
   return PostPdfProgressUseCase(ref.watch(coursesRepositoryProvider));
-});
-
-final trackLectureViewUseCaseProvider = Provider<TrackLectureViewUseCase>((
-  ref,
-) {
-  return TrackLectureViewUseCase(ref.watch(coursesRepositoryProvider));
 });
 
 /// The student's enrolled courses (`GET /courses`). Plain `FutureProvider`
@@ -153,22 +132,6 @@ final courseDetailsProvider = FutureProvider.family<CourseDetails, int>((
     exams: exams,
     teachers: details.teachers,
   );
-});
-
-/// `GET /api/student/courses/{id}/progress` — the course's up-to-date
-/// completion percentage, keyed by course id. Falls back to `null` (rather
-/// than throwing) on failure, since callers already have a slightly-staler
-/// percentage embedded in [courseDetailsProvider] to show instead.
-final courseProgressPercentProvider = FutureProvider.family<double?, int>((
-  ref,
-  courseId,
-) async {
-  final useCase = ref.watch(getCourseProgressUseCaseProvider);
-  final result = await useCase(courseId);
-  return switch (result) {
-    Ok<double>(:final value) => value,
-    Err<double>() => null,
-  };
 });
 
 /// The full published catalog (`GET /courses/available`), enrolled or not.

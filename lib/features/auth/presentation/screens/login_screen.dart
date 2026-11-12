@@ -12,6 +12,7 @@ import 'package:itaaleem/features/auth/presentation/widgets/device_lock_dialog.d
 import 'package:itaaleem/features/parent/presentation/screens/parent_home_screen.dart';
 import 'package:itaaleem/features/settings/presentation/providers/settings_providers.dart';
 import 'package:flutter/material.dart';
+import 'package:itaaleem/core/widgets/developer_credit.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -185,9 +186,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 label: const Text('دخول ولي أمر'),
                 style: TextButton.styleFrom(
                   foregroundColor: Theme.of(context).colorScheme.primary,
-                  textStyle: const TextStyle(fontFamily: 'Cairo', fontSize: 13),
+                  textStyle: const TextStyle(fontSize: 13),
                 ),
               ),
+            const SizedBox(height: AppSpacing.base),
+            const DeveloperCredit(),
           ],
         ),
       ),

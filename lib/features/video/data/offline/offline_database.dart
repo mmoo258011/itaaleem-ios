@@ -74,6 +74,9 @@ class OfflineVideos extends Table {
 class OfflineDatabase extends _$OfflineDatabase {
   OfflineDatabase() : super(_openConnection());
 
+  /// An in-memory database for tests.
+  OfflineDatabase.forTesting(super.executor);
+
   @override
   int get schemaVersion => 2;
 
@@ -106,8 +109,14 @@ class OfflineDatabase extends _$OfflineDatabase {
 
   Future<List<OfflineVideo>> getAll() => select(offlineVideos).get();
 
+  /// One row per lesson: a second download of the same lesson replaces its
+  /// row. `insertOnConflictUpdate` only handles a clash on the primary key,
+  /// so a re-download used to fail on the unique `lesson_id`.
   Future<int> upsert(OfflineVideosCompanion entry) =>
-      into(offlineVideos).insertOnConflictUpdate(entry);
+      into(offlineVideos).insert(
+        entry,
+        onConflict: DoUpdate((_) => entry, target: [offlineVideos.lessonId]),
+      );
 
   Future<void> updateByLessonId(
     int lessonId,

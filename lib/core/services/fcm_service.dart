@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:itaaleem/features/smart_ui/smart_push_routes.dart';
+import 'package:itaaleem/features/smart_ui/smart_ui_session.dart';
 import 'package:itaaleem/features/grade_change/grade_change_screen.dart'
     show gradeChangePath;
 import 'dart:async';
@@ -95,7 +97,7 @@ class FcmService {
   /// A tapped push that launched the app from fully terminated. Held until a
   /// session exists ([flushPendingNavigation]) — navigating during the splash
   /// / login redirect would just be discarded.
-  ({Object? type, Object? id})? _pendingNavigation;
+  ({Object? type, Object? id, Map<String, dynamic> data})? _pendingNavigation;
 
   /// Asks for notification permission once (Android 13+ `POST_NOTIFICATIONS`,
   /// iOS), then registers this device's FCM token for [studentId] with the
@@ -212,7 +214,7 @@ class FcmService {
     // After the router has settled on the home shell.
     Future<void>.delayed(
       const Duration(milliseconds: 600),
-      () => _navigateForType(pending.type, pending.id),
+      () => _navigateForType(pending.type, pending.id, pending.data),
     );
   }
 
@@ -263,8 +265,11 @@ class FcmService {
       debugPrint('>>> FCM listeners registered');
     }
     FirebaseMessaging.onMessageOpenedApp.listen(
-      (message) =>
-          _navigateForType(_typeOf(message.data), _targetId(message.data)),
+      (message) => _navigateForType(
+        _typeOf(message.data),
+        _targetId(message.data),
+        message.data,
+      ),
     );
     // A push that launched the app from fully terminated never fires
     // onMessageOpenedApp (the app wasn't running yet to listen) — this is
@@ -274,6 +279,7 @@ class FcmService {
       _pendingNavigation = (
         type: _typeOf(initialMessage.data),
         id: _targetId(initialMessage.data),
+        data: initialMessage.data,
       );
       // The session may already be up by the time this resolves.
       if (_studentId != null || _isGuardianMode) flushPendingNavigation();
@@ -308,7 +314,7 @@ class FcmService {
     if (payload == null || payload.isEmpty) return;
     try {
       final data = jsonDecode(payload) as Map<String, dynamic>;
-      _navigateForType(_typeOf(data), _targetId(data));
+      _navigateForType(_typeOf(data), _targetId(data), data);
     } catch (e) {
       if (kDebugMode) debugPrint('[FcmService] bad notification payload: $e');
     }
@@ -358,7 +364,11 @@ class FcmService {
   /// video player, an exam opens its details/attempt screen, anything else
   /// (or a type/id the app doesn't recognize) falls back to "الإشعارات" —
   /// per the spec's "type = lecture → video player, exam → exams screen".
-  void _navigateForType(Object? type, Object? id) {
+  void _navigateForType(
+    Object? type,
+    Object? id, [
+    Map<String, dynamic> data = const {},
+  ]) {
     final context = rootNavigatorKey.currentContext;
     if (context == null) return;
     final parsedId = id is num
@@ -370,6 +380,19 @@ class FcmService {
     if (_isGuardianType(type) || _isGuardianMode) {
       if (_isGuardianType(type) && _isGuardianMode && parsedId != null) {
         guardianHooks?.openChild(parsedId);
+      }
+      return;
+    }
+
+    // Smart UI students: the push opens inside the shell.
+    // (Center-inbox pushes are for staff, who never get the shell.)
+    if (SmartShellHooks.active && type != _centerInboxType) {
+      final hash = smartHashForPush(data);
+      final open = SmartShellHooks.openHash;
+      if (open != null) {
+        open(hash);
+      } else {
+        SmartShellHooks.pendingHash = hash;
       }
       return;
     }

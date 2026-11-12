@@ -14,6 +14,7 @@ abstract interface class AuthRepository {
     required String passwordConfirmation,
     String? email,
     int? courseId,
+    Map<String, String> extras = const {},
   });
 
   Future<Result<Student>> login({

@@ -9,6 +9,8 @@ import 'package:itaaleem/core/network/api_endpoints.dart';
 import 'package:itaaleem/core/theme/app_radius.dart';
 import 'package:itaaleem/core/theme/app_spacing.dart';
 import 'package:itaaleem/core/widgets/app_error_state.dart';
+import 'package:itaaleem/features/app_config/app_config.dart';
+import 'package:itaaleem/features/app_config/app_config_providers.dart';
 import 'package:itaaleem/features/auth/presentation/providers/auth_controller.dart';
 import 'package:itaaleem/features/center_admin/data/center_admin_models.dart';
 import 'package:itaaleem/features/center_admin/presentation/center_admin_routes.dart';
@@ -17,6 +19,7 @@ import 'package:itaaleem/features/center_admin/presentation/widgets/admin_common
 import 'package:itaaleem/features/center_admin/presentation/widgets/admin_menu_item.dart';
 import 'package:itaaleem/features/center_admin/presentation/widgets/admin_stat_card.dart';
 import 'package:itaaleem/features/center_admin/providers/center_admin_providers.dart';
+import 'package:itaaleem/features/web_panel/open_menu_link.dart';
 
 /// Home of the center-admin dashboard: center header, quick actions,
 /// pending subscription requests (badge + "طلبات جديدة"), 8 counters, every
@@ -32,7 +35,10 @@ class CenterDashboardScreen extends ConsumerStatefulWidget {
   static const _groups = <(String, List<(IconData, String, String)>)>[
     (
       'الرئيسية',
-      [(Icons.insights_rounded, 'الإحصائيات', centerAdminStatsPath)],
+      [
+        (Icons.dashboard_rounded, 'لوحة التحكم', centerAdminPanelPath),
+        (Icons.insights_rounded, 'الإحصائيات', centerAdminStatsPath),
+      ],
     ),
     (
       'المحتوى',
@@ -180,6 +186,10 @@ class _CenterDashboardScreenState extends ConsumerState<CenterDashboardScreen> {
     final pendingAsync = ref.watch(centerPendingRequestsProvider);
     final pendingCount = pendingAsync.valueOrNull?.total ?? 0;
     final unread = ref.watch(centerInboxUnreadProvider).valueOrNull ?? 0;
+    final config = ref.watch(currentAppConfigProvider);
+    final menuLinks = config.menuLinksFor('center_admin');
+    // «لوحة التحكم» (the web panel) only once its handoff is live.
+    final panelHandoff = config.panelHandoffEnabled;
     final profileCenter = ref.watch(
       authControllerProvider.select((s) => s.valueOrNull?.centerJson),
     );
@@ -266,15 +276,36 @@ class _CenterDashboardScreenState extends ConsumerState<CenterDashboardScreen> {
                     childAspectRatio: 0.9,
                     children: [
                       for (final (icon, label, path) in items)
-                        _menuItem(
-                          icon,
-                          label,
-                          path,
-                          badge: path == centerAdminStudentsPath
-                              ? pendingCount
-                              : path == centerAdminInboxPath
-                              ? unread
-                              : 0,
+                        if (path != centerAdminPanelPath || panelHandoff)
+                          _menuItem(
+                            icon,
+                            label,
+                            path,
+                            badge: path == centerAdminStudentsPath
+                                ? pendingCount
+                                : path == centerAdminInboxPath
+                                ? unread
+                                : 0,
+                          ),
+                    ],
+                  ),
+                ],
+                // `menu_links.center_admin` from `GET /app-config`.
+                if (menuLinks.isNotEmpty) ...[
+                  const AdminSectionTitle('روابط'),
+                  GridView.count(
+                    crossAxisCount: wide ? 6 : 4,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    mainAxisSpacing: AppSpacing.sm,
+                    crossAxisSpacing: AppSpacing.sm,
+                    childAspectRatio: 0.9,
+                    children: [
+                      for (final link in menuLinks)
+                        AdminMenuItem(
+                          icon: configIcon(link.icon),
+                          label: link.title,
+                          onTap: () => openMenuLink(context, link),
                         ),
                     ],
                   ),

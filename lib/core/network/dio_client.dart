@@ -29,8 +29,7 @@ class AuthInterceptor extends Interceptor {
   ) async {
     // Never send the student's token to a third-party host (e.g. PDFs
     // hosted on another server) — only to our own API.
-    final isOwnApi = options.uri.host == Uri.parse(ApiEndpoints.baseUrl).host;
-    if (options.extra['skipAuth'] == true || !isOwnApi) {
+    if (options.extra['skipAuth'] == true || !isOwnApiUri(options.uri)) {
       handler.next(options);
       return;
     }
@@ -40,6 +39,18 @@ class AuthInterceptor extends Interceptor {
     }
     handler.next(options);
   }
+}
+
+/// Our own API: the same scheme, host and port as [ApiEndpoints.baseUrl]
+/// (and no userinfo). A host match alone isn't enough — `http://` or another
+/// port on the same host would get the token in clear text or on a service
+/// that isn't ours.
+bool isOwnApiUri(Uri uri, {String? baseUrl}) {
+  final base = Uri.parse(baseUrl ?? ApiEndpoints.baseUrl);
+  return uri.userInfo.isEmpty &&
+      uri.scheme.toLowerCase() == base.scheme.toLowerCase() &&
+      uri.host.toLowerCase() == base.host.toLowerCase() &&
+      uri.port == base.port;
 }
 
 /// Request options for endpoints that must never carry an `Authorization`

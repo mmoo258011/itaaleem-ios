@@ -6,7 +6,14 @@ import 'package:itaaleem/core/widgets/app_input.dart';
 import 'package:itaaleem/core/widgets/app_toast.dart';
 import 'package:itaaleem/core/widgets/auth_shell.dart';
 import 'package:itaaleem/features/auth/presentation/providers/auth_controller.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:itaaleem/features/smart_ui/completion/complete_profile_screen.dart'
+    show governoratesProvider, profileCompletionApiProvider;
+import 'package:itaaleem/features/smart_ui/completion/link_referral.dart';
+import 'package:itaaleem/features/smart_ui/completion/profile_completion.dart';
+import 'package:itaaleem/features/smart_ui/completion/signup_extras.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -28,6 +35,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final _parentPhoneController = TextEditingController();
+  final _referralController = TextEditingController();
+  String? _governorate;
   bool _submitting = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -46,8 +56,36 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _parentPhoneController.dispose();
+    _referralController.dispose();
     super.dispose();
   }
+
+  @override
+  void initState() {
+    super.initState();
+    // The invite code from the center's link (Play referrer / the copied
+    // `itaaleem:{code}:{ref}` on iOS), read once per install.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      const store = LinkReferralStore();
+      await store.readOnce(context);
+      final code = await store.pendingRef();
+      if (mounted && code != null && _referralController.text.isEmpty) {
+        _referralController.text = code;
+      }
+    });
+  }
+
+  SignupExtras get _extras => SignupExtras(
+    governorate: _governorate,
+    parentPhone: _parentPhoneController.text.trim().isEmpty
+        ? null
+        : _parentPhoneController.text.trim(),
+    referralCode: _referralController.text.trim().isEmpty
+        ? null
+        : _referralController.text.trim(),
+  );
 
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
@@ -57,6 +95,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       _submitting = true;
       _fieldErrors = const {};
     });
+    final extras = _extras;
+    // Kept until the server has them (see flushSignupExtras).
+    await saveSignupExtras(extras);
+    if (!mounted) return;
     final failure = await ref
         .read(authControllerProvider.notifier)
         .register(
@@ -74,7 +116,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               : _emailController.text.trim(),
           password: _passwordController.text,
           passwordConfirmation: _confirmPasswordController.text,
+          extras: extras.toRegisterFields(),
         );
+    if (failure == null) {
+      // Signed in now: hand them to /profile/complete too, in case the
+      // register endpoint didn't keep them.
+      unawaited(flushSignupExtras(ref.read(profileCompletionApiProvider)));
+      unawaited(const LinkReferralStore().clearRef());
+    }
     if (!mounted) return;
     setState(() {
       _submitting = false;
@@ -116,7 +165,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         onBack: () => context.go(loginPath),
         fields: [
           AppInput(
-            label: 'الاسم الكامل',
+            label: 'الاسم (ثنائي على الأقل)',
             controller: _fullNameController,
             prefixIcon: Icons.person_outline_rounded,
             textInputAction: TextInputAction.next,
@@ -130,8 +179,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   .split(RegExp(r'\s+'))
                   .where((w) => w.isNotEmpty)
                   .toList();
-              if (words.length < 3) {
-                return 'الاسم لازم يكون ثلاثي على الأقل';
+              if (words.length < 2) {
+                return 'يجب إدخال الاسم ثنائي على الأقل';
               }
               return null;
             },
@@ -259,8 +308,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             controller: _confirmPasswordController,
             prefixIcon: Icons.lock_outline_rounded,
             obscureText: _obscureConfirmPassword,
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) => _submit(),
+            textInputAction: TextInputAction.next,
             suffixIcon: IconButton(
               icon: Icon(
                 _obscureConfirmPassword
@@ -281,6 +329,46 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               }
               return null;
             },
+          ),
+          AppInput(
+            label: 'رقم ولي الأمر (اختياري)',
+            controller: _parentPhoneController,
+            prefixIcon: Icons.family_restroom_rounded,
+            keyboardType: TextInputType.phone,
+            textInputAction: TextInputAction.next,
+            errorText: _errorFor('parent_phone'),
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(11),
+            ],
+            validator: (v) =>
+                validateParentPhone(v, studentMobile: _mobileController.text),
+          ),
+          DropdownButtonFormField<String>(
+            initialValue: _governorate,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: 'المحافظة',
+              prefixIcon: const Icon(Icons.location_on_outlined),
+              errorText: _errorFor('governorate'),
+            ),
+            items: [
+              for (final g
+                  in ref.watch(governoratesProvider).valueOrNull ??
+                      fallbackGovernorates)
+                DropdownMenuItem(value: g.key, child: Text(g.name)),
+            ],
+            onChanged: (v) => setState(() => _governorate = v),
+            validator: (v) => v == null ? 'اختار المحافظة' : null,
+          ),
+          AppInput(
+            label: 'كود الدعوة (اختياري)',
+            controller: _referralController,
+            prefixIcon: Icons.card_giftcard_rounded,
+            textInputAction: TextInputAction.done,
+            errorText: _errorFor('referral_code'),
+            inputFormatters: [LengthLimitingTextInputFormatter(16)],
+            onSubmitted: (_) => _submit(),
           ),
         ],
         action: AuthGradientButton(

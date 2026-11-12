@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:itaaleem/app/router/app_router.dart';
 import 'package:itaaleem/app/router/route_args.dart';
 import 'package:itaaleem/core/network/dio_client.dart';
+import 'package:itaaleem/core/services/download_service.dart';
 import 'package:itaaleem/core/utils/safe_url.dart';
 import 'package:itaaleem/core/widgets/app_toast.dart';
 import 'package:open_filex/open_filex.dart';
@@ -62,10 +63,9 @@ Future<void> openFileInApp(
   showAppSnack(context, 'جاري فتح الملف...', type: AppSnackType.info);
   try {
     final dir = await getTemporaryDirectory();
-    final name = Uri.tryParse(url)?.pathSegments.lastOrNull ?? '';
     final path =
         '${dir.path}/${DateTime.now().microsecondsSinceEpoch}_'
-        '${name.isEmpty ? 'file${ext.isEmpty ? '' : '.$ext'}' : name}';
+        '${tempFileNameFor(url, ext)}';
     await dio.download(url, path);
     final result = await OpenFilex.open(path);
     if (result.type == ResultType.done) return;
@@ -79,4 +79,16 @@ Future<void> openFileInApp(
       uri != null &&
       await launchUrlSafely(uri, mode: LaunchMode.externalApplication);
   if (!ok && context.mounted) AppToast.showError(context, 'تعذر فتح الملف');
+}
+
+/// The local name for a file opened from [url]: its last path segment (which
+/// [Uri] has already percent-decoded, so `..%2F..%2Fx` would be `../../x`)
+/// through [sanitizeFilename], so it never leaves the temp directory.
+@visibleForTesting
+String tempFileNameFor(String url, String ext) {
+  final raw = Uri.tryParse(url)?.pathSegments.lastOrNull ?? '';
+  final fallback = 'file${ext.isEmpty ? '' : '.$ext'}';
+  if (raw.isEmpty) return fallback;
+  final safe = sanitizeFilename(raw);
+  return safe == 'download' ? fallback : safe;
 }
