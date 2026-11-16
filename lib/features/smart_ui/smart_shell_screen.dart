@@ -25,6 +25,7 @@ import 'package:itaaleem/features/smart_ui/smart_ui_bridge.dart';
 import 'package:itaaleem/features/smart_ui/smart_ui_handoff.dart';
 import 'package:itaaleem/features/smart_ui/smart_ui_links.dart';
 import 'package:itaaleem/features/smart_ui/smart_shell_actions.dart';
+import 'package:itaaleem/features/smart_ui/smart_shell_failures.dart';
 import 'package:itaaleem/features/smart_ui/smart_shell_uploads.dart';
 import 'package:itaaleem/features/smart_ui/smart_shell_scripts.dart';
 import 'package:itaaleem/features/smart_ui/smart_shell_state.dart';
@@ -34,7 +35,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
-enum _Phase { loading, ready, offline }
+enum _Phase { loading, ready, offline, error }
 
 /// The smart UI: the center's web app in a WebView, signed in with a
 /// one-time handoff ticket, talking to the app over the `ItaaleemNative`
@@ -52,6 +53,8 @@ class _SmartShellScreenState extends ConsumerState<SmartShellScreen> {
   SmartUiAccess? _access;
   final String _nonce = _newNonce();
   bool _starting = false;
+  final _failures = SmartFailureTracker();
+  final _processGone = ProcessGoneLimiter();
 
   /// The launch overlay is in the tree (it fades out after the page loads).
   bool _launchVisible = true;
@@ -94,7 +97,9 @@ class _SmartShellScreenState extends ConsumerState<SmartShellScreen> {
     try {
       final access = ref.read(authControllerProvider).valueOrNull?.smartUi;
       if (access == null || !access.enabled) {
-        _fallBack();
+        // The server switched it off (or /profile never had it): not a
+        // failure. A /profile that failed keeps the last saved profile.
+        _fallBack('smart_ui is off for this student');
         return;
       }
       _access = access;
@@ -106,10 +111,10 @@ class _SmartShellScreenState extends ConsumerState<SmartShellScreen> {
         handoff = await requestHandoff(ref.read(dioClientProvider), access);
       } on HandoffException catch (e) {
         if (!mounted) return;
-        if (e.reason == HandoffFailure.offline || !await _isOnline()) {
+        if (e.reason == HandoffFailure.offline) {
           setState(() => _phase = _Phase.offline);
         } else {
-          _fallBack();
+          _scheduleFailure('handoff ${e.reason.name}');
         }
         return;
       }
@@ -137,10 +142,14 @@ class _SmartShellScreenState extends ConsumerState<SmartShellScreen> {
   }
 
   /// Back to the native app for the rest of this run.
-  void _fallBack() {
-    if (kDebugMode) debugPrint('[SmartShell] falling back to the native app');
+  void _fallBack(String reason) {
+    debugPrint('[SmartShell] falling back to the native app: $reason');
     ref.read(smartUiFallbackProvider.notifier).state = true;
   }
+
+  /// [_pageFailed] once [_start] has let go (it may be what failed).
+  void _scheduleFailure(String reason) =>
+      unawaited(Future<void>.microtask(() => _pageFailed(reason)));
 
   Future<WebViewController> _createController() async {
     final PlatformWebViewControllerCreationParams params;
@@ -285,6 +294,8 @@ class _SmartShellScreenState extends ConsumerState<SmartShellScreen> {
     }
     if (mounted && _phase == _Phase.loading) {
       _revealDeadline = null;
+      _failures.reset();
+      _processGone.markReady();
       setState(() => _phase = _Phase.ready);
     }
   }
@@ -330,45 +341,72 @@ class _SmartShellScreenState extends ConsumerState<SmartShellScreen> {
     }
   }
 
-  // Cancelled loads (a prevented navigation, a quick second tap) aren't
-  // failures: Android -3 (ERR_ABORTED), iOS -999 (NSURLErrorCancelled).
-  static const _cancelled = {-3, -999};
-
   Future<void> _onWebResourceError(WebResourceError error) async {
-    if (error.isForMainFrame != true || _cancelled.contains(error.errorCode)) {
-      return;
+    switch (classifyLoadError(error, onOrigin: _onOrigin)) {
+      case SmartLoadError.ignore:
+        return;
+      case SmartLoadError.processGone:
+        // iOS dropped the page (often while in the background): a blank
+        // WebView, not a broken smart UI. Sign in again, same screen.
+        // A few in a row: something is wrong with the page — our own
+        // error screen, not the native app.
+        if (!_processGone.record()) {
+          if (mounted) {
+            setState(() {
+              _softReloading = false;
+              _phase = _Phase.error;
+            });
+          }
+          return;
+        }
+        if (mounted) setState(() => _softReloading = false);
+        await _handoffReload(_lastAppUri);
+        return;
+      case SmartLoadError.pageFailed:
+        if (_softReloading) {
+          if (mounted) setState(() => _softReloading = false);
+        }
+        await _pageFailed(
+          'load error ${error.errorCode} ${error.errorType?.name ?? ''} '
+          '${Uri.tryParse(error.url ?? '')?.path ?? ''}',
+        );
     }
-    // Only the smart UI's own pages: a YouTube page failing is not ours.
-    if (error.url != null && !_onOrigin(error.url)) return;
-    if (_softReloading) {
-      if (mounted) setState(() => _softReloading = false);
-    }
-    await _pageFailed();
   }
 
   void _onHttpError(HttpResponseError error) {
     final status = error.response?.statusCode ?? 0;
-    final url = error.request?.uri.toString();
+    final uri = error.request?.uri;
+    final url = uri?.toString();
+    if (!isPageHttpError(uri, status, onOrigin: _onOrigin(url))) return;
     // Soft reload refused (401/419: session expired, or any 4xx/5xx on the
     // page itself): fall back to a fresh handoff.
-    if (_softReloading && _onOrigin(url) && status >= 400) {
+    if (_softReloading) {
       unawaited(_softReloadFailed(_lastAppUri));
       return;
     }
     // Before the UI is up, a 5xx/404 on the handoff or the app page means
     // the smart UI isn't usable right now.
-    if (_phase != _Phase.ready && _onOrigin(url) && status >= 400) {
-      unawaited(_pageFailed());
+    if (_phase != _Phase.ready) {
+      unawaited(_pageFailed('HTTP $status ${uri!.path}'));
     }
   }
 
-  Future<void> _pageFailed() async {
+  /// The smart UI's own page failed. Offline: the offline screen. Online:
+  /// a fresh handoff to the same screen, and only after
+  /// [SmartFailureTracker.limit] failures in a row back to the native app.
+  Future<void> _pageFailed(String reason) async {
     if (!mounted) return;
-    if (await _isOnline()) {
-      _fallBack();
-    } else if (mounted) {
-      setState(() => _phase = _Phase.offline);
+    if (!await _isOnline()) {
+      if (mounted) setState(() => _phase = _Phase.offline);
+      return;
     }
+    if (!mounted) return;
+    if (_failures.fail(reason)) {
+      _fallBack(reason);
+      return;
+    }
+    await Future<void>.delayed(const Duration(seconds: 1));
+    if (mounted) await _handoffReload(_lastAppUri);
   }
 
   Future<List<String>> _pickFiles(FileSelectorParams params) async {
@@ -410,6 +448,13 @@ class _SmartShellScreenState extends ConsumerState<SmartShellScreen> {
       if (kDebugMode) debugPrint('[SmartShell] file picker failed: $e');
       return const [];
     }
+  }
+
+  /// «إعادة المحاولة» on the error screen: a fresh handoff, counts cleared.
+  void _retryAfterError() {
+    _processGone.reset();
+    _failures.reset();
+    unawaited(_handoffReload(_lastAppUri));
   }
 
   void _openHash(String hash) {
@@ -544,10 +589,14 @@ class _SmartShellScreenState extends ConsumerState<SmartShellScreen> {
               body: SafeArea(
                 child: Stack(
                   children: [
-                    if (controller != null && _phase != _Phase.offline)
+                    if (controller != null &&
+                        _phase != _Phase.offline &&
+                        _phase != _Phase.error)
                       WebViewWidget(controller: controller),
                     if (_phase == _Phase.offline)
                       _SmartOffline(onRetry: () => unawaited(_start())),
+                    if (_phase == _Phase.error)
+                      SmartLoadErrorView(onRetry: _retryAfterError),
                     // «تحديث» in place: just a thin bar at the top.
                     if (_softReloading)
                       const Positioned(
@@ -634,6 +683,54 @@ class _SmartOffline extends StatelessWidget {
                   onPressed: () => context.push(downloadsPath),
                   icon: Icon(Icons.download_done_rounded, color: onPrimary),
                   label: Text('التحميلات', style: TextStyle(color: onPrimary)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown after the page's process kept dying: retry signs in again.
+class SmartLoadErrorView extends StatelessWidget {
+  const SmartLoadErrorView({super.key, required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final onPrimary = context.palette.onPrimary;
+    return Positioned.fill(
+      child: DecoratedBox(
+        decoration: BoxDecoration(gradient: context.palette.brandGradient),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.xxl),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.error_outline_rounded, color: onPrimary, size: 64),
+                const SizedBox(height: AppSpacing.lg),
+                Text(
+                  'حصلت مشكلة في تحميل الصفحة',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: onPrimary,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xxl),
+                FilledButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('إعادة المحاولة'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: onPrimary,
+                    foregroundColor: context.palette.primary,
+                  ),
                 ),
               ],
             ),
